@@ -32,7 +32,7 @@ QwenPaw 是一个开源个人 Agent 助手，后端基于 Python、FastAPI、Cli
 
 ### 方案 A：QwenPaw 内置 extension 层 + 业务侧 SDK 包
 
-在 QwenPaw 中新增 `src/qwenpaw/extensions/`，提供稳定的 registry、spec、config loader、entry point 加载、hook 调度。现有硬编码入口改为查询 extension registry。业务侧发布独立包，例如 `gdeclaw-qwenpaw-sdk` 或 `gdeclaw-qwenpaw-extension`，通过 entry point 或启动代码注册能力。
+在 QwenPaw 中新增 `src/qwenpaw/extensions/`，提供稳定的 registry、spec、config loader、entry point 加载、hook 调度。现有硬编码入口改为查询 extension registry。业务侧发布独立包，例如 `<product>-qwenpaw-sdk` 或 `<product>-qwenpaw-extension`，通过 entry point 或启动代码注册能力。
 
 优点：
 
@@ -101,7 +101,7 @@ src/qwenpaw/extensions/
 
 - `ExtensionRegistry`：全局 registry，持有产品规格、feature policy、CLI patch、FastAPI patch、provider/channel/plugin/tool/agent template 注册信息。
 - `ProductSpec`：产品名、版本、模块别名、CLI 名、环境变量前缀、工作目录、secret 目录、backup 目录、console static 目录。
-- `EnvSpec`：环境变量解析规则，支持 `GDECLAW_*` 主前缀、`QWENPAW_*` 兼容前缀、`COPAW_*` legacy 前缀。
+- `EnvSpec`：环境变量解析规则，支持业务主前缀、`QWENPAW_*` 兼容前缀、`COPAW_*` legacy 前缀。
 - `LoggingSpec`：日志 namespace、日志文件路径、日志格式、handler factory。
 - `FeaturePolicy`：功能启停清单，例如 `builtin_qa_agent`、`telemetry`、`market`、`backup`、`local_models`、`cron`、`mcp`、`acp`、`voice`。
 - `CliPatch`：Click 命令增删改、别名、隐藏原命令、替换 command group。
@@ -113,11 +113,13 @@ src/qwenpaw/extensions/
 
 ## 业务侧使用方式
 
+本节中的产品名、模块名、环境变量前缀和路径均为示例。Extension SDK 的实现不得硬编码任何业务关键字；所有业务标识必须来自 `ProductSpec`、配置文件、环境变量或 entry point 注册结果。测试也应使用可替换的示例前缀验证动态行为，而不是把某个业务名写成特殊分支。
+
 业务包通过 entry point 注册：
 
 ```toml
 [project.entry-points."qwenpaw.extensions"]
-gdeclaw = "gdeclaw_qwenpaw_extension:register"
+my_product = "my_product_qwenpaw_extension:register"
 ```
 
 业务注册函数：
@@ -129,15 +131,15 @@ from qwenpaw.extensions import ProductSpec, FeaturePolicy
 def register(registry):
     registry.configure_product(
         ProductSpec(
-            product_name="GdeClaw",
+            product_name="MyProduct",
             product_version="2.0.0",
-            module_alias="gdeclaw",
-            cli_name="gdeclaw",
-            env_prefixes=("GDECLAW", "QWENPAW", "COPAW"),
-            working_dir="~/.gdeclaw",
-            secret_dir="~/.gdeclaw.secret",
-            backup_dir="~/.gdeclaw.backups",
-            console_static_dir="/opt/gdeclaw/console",
+            module_alias="my_product",
+            cli_name="myproduct",
+            env_prefixes=("MYPRODUCT", "QWENPAW", "COPAW"),
+            working_dir="~/.myproduct",
+            secret_dir="~/.myproduct.secret",
+            backup_dir="~/.myproduct.backups",
+            console_static_dir="/opt/myproduct/console",
         )
     )
 
@@ -155,13 +157,13 @@ def register(registry):
 
 ```yaml
 product:
-  name: GdeClaw
+  name: MyProduct
   version: 2.0.0
-  cli_name: gdeclaw
-  env_prefixes: [GDECLAW, QWENPAW, COPAW]
-  working_dir: ~/.gdeclaw
-  secret_dir: ~/.gdeclaw.secret
-  console_static_dir: /opt/gdeclaw/console
+  cli_name: myproduct
+  env_prefixes: [MYPRODUCT, QWENPAW, COPAW]
+  working_dir: ~/.myproduct
+  secret_dir: ~/.myproduct.secret
+  console_static_dir: /opt/myproduct/console
 
 features:
   disabled:
@@ -180,7 +182,63 @@ features:
 默认配置路径由环境变量指定：
 
 - `QWENPAW_EXTENSION_CONFIG`
-- 或业务前缀等价变量，例如 `GDECLAW_EXTENSION_CONFIG`
+- 或业务前缀等价变量，例如 `MYPRODUCT_EXTENSION_CONFIG`
+
+装饰器 API 也应作为一等使用方式提供，降低业务接入成本。装饰器只负责把声明转换为 registry 操作，底层仍复用同一套 `ExtensionRegistry`：
+
+```python
+from fastapi import APIRouter
+from qwenpaw.extensions import (
+    FeaturePolicy,
+    ProductSpec,
+    qwenpaw_extension,
+)
+
+ext = qwenpaw_extension("my_product")
+
+
+@ext.product
+def product_spec() -> ProductSpec:
+    return ProductSpec(
+        product_name="MyProduct",
+        product_version="2.0.0",
+        cli_name="myproduct",
+        env_prefixes=("MYPRODUCT", "QWENPAW", "COPAW"),
+        working_dir="~/.myproduct",
+    )
+
+
+@ext.features
+def feature_policy() -> FeaturePolicy:
+    return FeaturePolicy(
+        disabled_features={"builtin_qa_agent"},
+        disabled_channels={"wechat", "qq"},
+    )
+
+
+@ext.cli.command("diagnose", help="Run product diagnostics")
+def diagnose_command():
+    import click
+
+    @click.command("diagnose")
+    def command():
+        click.echo("diagnostics ok")
+
+    return command
+
+
+@ext.app.router(prefix="/product", tags=["product"])
+def product_router() -> APIRouter:
+    router = APIRouter()
+
+    @router.get("/health")
+    def health():
+        return {"status": "ok"}
+
+    return router
+```
+
+装饰器 API 与显式 `register(registry)` 函数可以并存。复杂场景使用显式 registry 更直观，简单声明使用装饰器更轻。
 
 ## 数据流
 
@@ -202,10 +260,19 @@ features:
 
 新增 `EnvResolver`，统一替换当前 `_get_env()`：
 
-- `resolver.get("WORKING_DIR")` 会按前缀顺序查找 `GDECLAW_WORKING_DIR`、`QWENPAW_WORKING_DIR`、`COPAW_WORKING_DIR`。
+- `resolver.get("WORKING_DIR")` 会按前缀顺序查找业务前缀变量、`QWENPAW_WORKING_DIR`、`COPAW_WORKING_DIR`。例如业务前缀为 `MYPRODUCT` 时，优先级是 `MYPRODUCT_WORKING_DIR` > `QWENPAW_WORKING_DIR` > `COPAW_WORKING_DIR`。
 - 现有 `EnvVarLoader.get_str("QWENPAW_XXX")` 保持兼容，但内部转为 canonical key 解析。
-- 对已有环境变量不破坏：默认前缀仍为 `("QWENPAW", "COPAW")`。
-- 业务 extension 可以把 `GDECLAW` 放在第一优先级。
+- 所有当前已经存在的 `QWENPAW_*` 环境变量都必须支持业务自定义前缀。实现时不得只迁移工作目录相关变量，日志、鉴权、CORS、OpenAPI docs、console static、browser、tool guard、skill hub、LLM 限流、备份、集成测试等现有变量都要走统一 resolver。
+- 业务自定义前缀优先级必须高于 QwenPaw 默认前缀；QwenPaw 默认变量是兼容 fallback，不应覆盖业务变量。
+- 对已有环境变量不破坏：未安装 extension 时默认前缀仍为 `("QWENPAW", "COPAW")`。
+- 业务 extension 可以把任意合法前缀放在第一优先级，SDK 不对具体业务关键字做特殊判断。
+
+实现约束：
+
+- `EnvVarLoader.get_*("QWENPAW_AUTH_ENABLED")` 这类旧调用可以保留签名，但内部必须把 `QWENPAW_` 剥离为 canonical suffix `AUTH_ENABLED`，再按 `ProductSpec.env_prefixes` 查找。
+- 直接调用 `os.environ.get("QWENPAW_...")` 的代码应迁移到 `EnvResolver`、`EnvVarLoader`，或迁移到从 `EnvResolver.key("...")` 生成实际变量名。
+- 受保护的持久化环境变量，例如 working dir、secret dir，也按 canonical suffix 管理，避免业务前缀和 QwenPaw 前缀保护规则不一致。
+- 测试应覆盖“业务变量与 QwenPaw 变量同时存在时业务变量获胜”的场景。
 
 ### 产品和路径
 
@@ -231,7 +298,7 @@ features:
 
 - 增加命令：`registry.cli.add_command("foo", "pkg.mod", "cmd")`
 - 删除命令：`registry.cli.disable_command("doctor")`
-- 覆盖命令：`registry.cli.replace_command("models", "gdeclaw.cli.models", "models_group")`
+- 覆盖命令：`registry.cli.replace_command("models", "my_product.cli.models", "models_group")`
 - 别名命令：`registry.cli.alias_command("skill", "skills")`
 - 改 version 名称：`prog_name=product.product_name`
 
@@ -239,7 +306,7 @@ features:
 
 ```toml
 [project.scripts]
-gdeclaw = "qwenpaw.cli.main:cli"
+myproduct = "qwenpaw.cli.main:cli"
 ```
 
 ### FastAPI
@@ -315,7 +382,7 @@ plugin loader discover 后、load 前应用 policy。
 
 统一使用 `ProductSpec.console_static_dir`，环境变量仍支持：
 
-- 业务前缀：`GDECLAW_CONSOLE_STATIC_DIR`
+- 业务前缀：例如 `MYPRODUCT_CONSOLE_STATIC_DIR`
 - 默认前缀：`QWENPAW_CONSOLE_STATIC_DIR`
 - legacy：`COPAW_CONSOLE_STATIC_DIR`
 
@@ -361,9 +428,9 @@ plugin loader discover 后、load 前应用 policy。
 
 集成测试：
 
-- 使用临时工作目录启动 FastAPI，验证 `GDECLAW_WORKING_DIR` 生效。
+- 使用临时工作目录启动 FastAPI，验证业务前缀变量优先于 `QWENPAW_WORKING_DIR`。
 - 安装一个测试 extension entry point，验证 `/api/version`、console static、provider list、channel types。
-- 使用 `gdeclaw = qwenpaw.cli.main:cli` 测试 CLI 命令别名。
+- 使用业务 CLI script 指向 `qwenpaw.cli.main:cli` 测试 CLI 命令别名。
 - 禁用 QA agent 后启动，验证不会新建 QA profile。
 
 兼容性测试：
@@ -376,14 +443,39 @@ plugin loader discover 后、load 前应用 policy。
 
 本阶段只建设通用 extension SDK 框架和必要接入点，不实现任何具体业务产品逻辑。
 
-不在 QwenPaw 中写入 `GdeClaw` 专有逻辑。`GDECLAW_*` 只作为示例和测试 fixture 出现，不作为默认行为。
+不在 QwenPaw 中写入任何业务产品专有逻辑。业务产品名、业务模块名、业务 CLI 名、业务环境变量前缀只能来自运行时注册或配置。示例名称只允许出现在文档或测试 fixture 中，不能出现在 SDK 默认分支、默认配置或常量表里。
 
 不重命名 Python 包 `qwenpaw` 本身。模块名称的业务可见层通过业务 SDK 包、console 文案、CLI script 和 product spec 实现。
 
 不删除已有用户数据。禁用功能只影响启动、展示和新建行为；已有配置保留，必要时标记 disabled。
 
+## 文档交付
+
+实现完成时必须新增 SDK 使用文档，建议路径为：
+
+- `docs/extensions-sdk.md`：仓库内开发文档。
+- `website/public/docs/extensions-sdk.zh.md` 和 `website/public/docs/extensions-sdk.en.md`：面向用户和产品线的站点文档。
+
+文档至少覆盖：
+
+- Extension SDK 的定位、适用场景和不适用场景。
+- 最小可运行业务 extension 包结构。
+- entry point 注册方式。
+- 显式 `register(registry)` API 使用方式。
+- 装饰器 API 使用方式。
+- 配置文件格式、字段说明、优先级和完整 YAML/JSON 示例。
+- 环境变量前缀规则：业务前缀优先，`QWENPAW_*` 兼容 fallback，`COPAW_*` legacy fallback。
+- 产品名、版本、CLI 名、工作目录、secret 目录、日志、前端资源替换示例。
+- Click 命令增删改示例。
+- FastAPI router 和 lifespan hook 示例。
+- channel/provider/plugin/tool/agent template 注册、禁用、替换示例。
+- 禁用内置功能的配置清单和示例。
+- 常见错误和排查方法。
+- 测试业务 extension 的推荐 pytest fixture。
+- 兼容性说明：未安装 extension 时 QwenPaw 行为保持不变。
+
 ## 开放问题
 
-- 业务侧最终包名倾向 `gdeclaw-qwenpaw-extension` 还是 `gdeclaw-qwenpaw-sdk`。本设计不强制。
+- 业务侧最终包名由业务自行决定。本设计只要求它通过 `qwenpaw.extensions` entry point 或显式启动代码注册。
 - 是否需要为 extension 配置提供 JSON Schema，便于产品线在 IDE 中校验。
 - 是否要求 doctor 输出 extension 诊断信息，例如当前产品名、env 前缀、禁用功能清单、加载的 extension 包。
