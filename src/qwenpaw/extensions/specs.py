@@ -165,9 +165,9 @@ class CliCommandPatch:
 class CliPatch:
     """CLI extension patch set."""
 
-    add: tuple[CliCommandPatch, ...] = ()
-    replace: tuple[CliCommandPatch, ...] = ()
-    disable: tuple[str, ...] = ()
+    add: dict[str, CliCommandPatch] = field(default_factory=dict)
+    replace: dict[str, CliCommandPatch] = field(default_factory=dict)
+    disable: frozenset[str] = frozenset()
     aliases: dict[str, str] = field(default_factory=dict)
 
 

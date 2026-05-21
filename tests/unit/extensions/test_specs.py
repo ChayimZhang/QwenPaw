@@ -3,10 +3,15 @@ from pathlib import Path
 import pytest
 
 from qwenpaw.extensions import (
+    AppPatch,
     BuiltinChannelSpec,
+    CliCommandPatch,
+    CliPatch,
+    ExtensionSpec,
     FeaturePolicy,
     LoggingSpec,
     ProductSpec,
+    ProviderPatch,
 )
 
 
@@ -104,3 +109,62 @@ def test_builtin_channel_spec_success_shape():
     assert spec.required is True
     assert spec.default_enabled is False
     assert spec.display_name == "Console"
+
+
+def test_cli_command_patch_success_shape():
+    patch = CliCommandPatch(
+        name="diagnose",
+        module="my_product.cli",
+        attribute="diagnose",
+    )
+
+    assert patch.name == "diagnose"
+    assert patch.module == "my_product.cli"
+    assert patch.attribute == "diagnose"
+
+
+def test_cli_patch_success_shape():
+    patch = CliCommandPatch(
+        name="diagnose",
+        module="my_product.cli",
+        attribute="diagnose",
+    )
+    spec = CliPatch(
+        add={"diagnose": patch},
+        replace={"models": patch},
+        disable=frozenset({"doctor"}),
+        aliases={"llms": "models"},
+    )
+
+    assert spec.add == {"diagnose": patch}
+    assert spec.replace == {"models": patch}
+    assert spec.disable == frozenset({"doctor"})
+    assert spec.aliases == {"llms": "models"}
+
+
+def test_app_patch_defaults():
+    spec = AppPatch()
+
+    assert spec.routers == ()
+    assert spec.startup_hooks == ()
+    assert spec.shutdown_hooks == ()
+    assert spec.middleware_hooks == ()
+    assert spec.before_include_routers == ()
+    assert spec.after_include_routers == ()
+
+
+def test_provider_patch_success_shape():
+    spec = ProviderPatch(provider_id="example", provider_cls=object, replace=True)
+
+    assert spec.provider_id == "example"
+    assert spec.provider_cls is object
+    assert spec.replace is True
+
+
+def test_extension_spec_minimal_shape():
+    spec = ExtensionSpec(name="my_product")
+
+    assert spec.name == "my_product"
+    assert spec.product is None
+    assert spec.logging is None
+    assert isinstance(spec.features, FeaturePolicy)
