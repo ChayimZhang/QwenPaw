@@ -1,27 +1,26 @@
 # -*- coding: utf-8 -*-
-import os
 from pathlib import Path
 from dotenv import load_dotenv
+
+from qwenpaw.extensions import EnvResolver, get_extension_registry, load_extensions
 
 # Load .env file from project root before reading any env vars
 _env_path = Path(__file__).resolve().parent.parent.parent / ".env"
 if _env_path.exists():
     load_dotenv(_env_path)
+load_extensions()
+_EXTENSION_REGISTRY = get_extension_registry()
+_PRODUCT = _EXTENSION_REGISTRY.product
+_DEFAULT_PRODUCT = type(_PRODUCT)()
+_USES_DEFAULT_PRODUCT = _PRODUCT == _DEFAULT_PRODUCT
+_ENV = EnvResolver(_PRODUCT)
 
 
 def _get_env(key: str, default: str = "") -> str:
-    """Look up an env var with automatic COPAW_ legacy fallback.
-
-    Primary key is always used as-is.  When the primary key starts with
-    ``QWENPAW_``, the corresponding ``COPAW_`` variant is transparently
-    checked as a fallback so that existing deployments keep working.
-    """
-    if key in os.environ:
-        return os.environ[key]
-    if key.startswith("QWENPAW_"):
-        legacy_key = "COPAW_" + key[len("QWENPAW_") :]
-        if legacy_key in os.environ:
-            return os.environ[legacy_key]
+    """Look up an env var across product, QwenPaw, and legacy prefixes."""
+    value = _ENV.get(key)
+    if value is not None:
+        return value
     return default
 
 
@@ -90,27 +89,26 @@ class EnvVarLoader:
 # 1. QWENPAW_WORKING_DIR / COPAW_WORKING_DIR env var is set → use it
 # 2. ~/.copaw exists (legacy installation) → use it as-is
 # 3. Default → ~/.qwenpaw
-_explicit_working_dir = _get_env("QWENPAW_WORKING_DIR")
+_explicit_working_dir = _get_env("WORKING_DIR")
 if _explicit_working_dir:
     WORKING_DIR = Path(_explicit_working_dir).expanduser().resolve()
+elif not _USES_DEFAULT_PRODUCT:
+    WORKING_DIR = Path(_PRODUCT.working_dir).expanduser().resolve()
 else:
     _legacy_copaw_dir = Path("~/.copaw").expanduser()
     if _legacy_copaw_dir.exists():
         WORKING_DIR = _legacy_copaw_dir.resolve()
     else:
-        WORKING_DIR = Path("~/.qwenpaw").expanduser().resolve()
-SECRET_DIR = (
-    Path(
-        EnvVarLoader.get_str(
-            "QWENPAW_SECRET_DIR",
-            f"{WORKING_DIR}.secret",
-        ),
-    )
-    .expanduser()
-    .resolve()
-)
+        WORKING_DIR = Path(_PRODUCT.working_dir).expanduser().resolve()
+_explicit_secret_dir = _get_env("SECRET_DIR")
+if _explicit_secret_dir:
+    SECRET_DIR = Path(_explicit_secret_dir).expanduser().resolve()
+elif not _USES_DEFAULT_PRODUCT:
+    SECRET_DIR = Path(_PRODUCT.secret_dir).expanduser().resolve()
+else:
+    SECRET_DIR = Path(f"{WORKING_DIR}.secret").expanduser().resolve()
 
-PROJECT_NAME = "QwenPaw"
+PROJECT_NAME = _PRODUCT.product_name
 
 
 def _resolve_docs_dir() -> Path | None:
@@ -129,10 +127,16 @@ def _resolve_docs_dir() -> Path | None:
 DOCS_DIR: Path | None = _resolve_docs_dir()
 
 # Default media directory for channels (cross-platform)
-DEFAULT_MEDIA_DIR = WORKING_DIR / "media"
+if _USES_DEFAULT_PRODUCT:
+    DEFAULT_MEDIA_DIR = (WORKING_DIR / "media").resolve()
+else:
+    DEFAULT_MEDIA_DIR = Path(_PRODUCT.media_dir).expanduser().resolve()
 
 # Default local provider directory
-DEFAULT_LOCAL_PROVIDER_DIR = WORKING_DIR / "local_models"
+if _USES_DEFAULT_PRODUCT:
+    DEFAULT_LOCAL_PROVIDER_DIR = (WORKING_DIR / "local_models").resolve()
+else:
+    DEFAULT_LOCAL_PROVIDER_DIR = Path(_PRODUCT.local_provider_dir).expanduser().resolve()
 
 JOBS_FILE = EnvVarLoader.get_str("QWENPAW_JOBS_FILE", "jobs.json")
 
@@ -192,7 +196,7 @@ DEBUG_HISTORY_FILE = EnvVarLoader.get_str(
 MAX_LOAD_HISTORY_COUNT = 10000
 
 # Env key for app log level (used by CLI and app load for reload child).
-LOG_LEVEL_ENV = "QWENPAW_LOG_LEVEL"
+LOG_LEVEL_ENV = _ENV.key("LOG_LEVEL")
 
 # Env to indicate running inside a container (e.g. Docker). Set to 1/true/yes.
 RUNNING_IN_CONTAINER = EnvVarLoader.get_bool(
@@ -219,23 +223,25 @@ DOCS_ENABLED = EnvVarLoader.get_bool("QWENPAW_OPENAPI_DOCS", False)
 MEMORY_DIR = WORKING_DIR / "memory"
 
 # Backup directory
-BACKUP_DIR = (
-    Path(
-        EnvVarLoader.get_str(
-            "QWENPAW_BACKUP_DIR",
-            f"{WORKING_DIR}.backups",
-        ),
-    )
-    .expanduser()
-    .resolve()
-)
+_backup_default = _PRODUCT.backup_dir
+if _USES_DEFAULT_PRODUCT:
+    _backup_default = f"{WORKING_DIR}.backups"
+BACKUP_DIR = Path(
+    EnvVarLoader.get_str("QWENPAW_BACKUP_DIR", str(_backup_default)),
+).expanduser().resolve()
 
 # Custom channel modules (installed via `qwenpaw channels install`); manager
 # loads BaseChannel subclasses from here.
-CUSTOM_CHANNELS_DIR = WORKING_DIR / "custom_channels"
+if _USES_DEFAULT_PRODUCT:
+    CUSTOM_CHANNELS_DIR = (WORKING_DIR / "custom_channels").resolve()
+else:
+    CUSTOM_CHANNELS_DIR = Path(_PRODUCT.custom_channels_dir).expanduser().resolve()
 
 # Plugin directory (installed via `qwenpaw plugin install`)
-PLUGINS_DIR = WORKING_DIR / "plugins"
+if _USES_DEFAULT_PRODUCT:
+    PLUGINS_DIR = (WORKING_DIR / "plugins").resolve()
+else:
+    PLUGINS_DIR = Path(_PRODUCT.plugins_dir).expanduser().resolve()
 
 # Local models directory
 MODELS_DIR = WORKING_DIR / "models"

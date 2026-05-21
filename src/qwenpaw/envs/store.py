@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Optional
 
 from qwenpaw.constant import SECRET_DIR, WORKING_DIR
+from qwenpaw.extensions import EnvResolver, get_extension_registry
 from qwenpaw.security.secret_store import decrypt, encrypt, is_encrypted
 
 logger = logging.getLogger(__name__)
@@ -83,12 +84,12 @@ def _migrate_legacy_envs_json(path: Path) -> None:
 
 # Security-sensitive envs should come from process/system environment,
 # not persisted envs.json.
-_PROTECTED_BOOTSTRAP_KEYS = frozenset(
-    {
-        "QWENPAW_WORKING_DIR",
-        "QWENPAW_SECRET_DIR",
-    },
-)
+_PROTECTED_BOOTSTRAP_SUFFIXES = frozenset({"WORKING_DIR", "SECRET_DIR"})
+
+
+def _is_protected_bootstrap_key(key: str) -> bool:
+    resolver = EnvResolver(get_extension_registry().product)
+    return resolver.suffix(key) in _PROTECTED_BOOTSTRAP_SUFFIXES
 
 
 def get_envs_json_path() -> Path:
@@ -262,7 +263,7 @@ def load_envs_into_environ() -> dict[str, str]:
     bootstrap_envs = {
         key: value
         for key, value in envs.items()
-        if key not in _PROTECTED_BOOTSTRAP_KEYS
+        if not _is_protected_bootstrap_key(key)
     }
     # Do not override explicit runtime/system env vars.
     _apply_to_environ(bootstrap_envs, overwrite=False)
