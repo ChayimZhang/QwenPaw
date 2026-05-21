@@ -24,6 +24,10 @@ def test_product_spec_defaults_expand_paths_under_working_dir():
     assert spec.custom_channels_dir == spec.working_dir / "custom_channels"
     assert spec.media_dir == spec.working_dir / "media"
     assert spec.local_provider_dir == spec.working_dir / "local_providers"
+    assert spec.product_version is None
+    assert spec.skill_cli_name is None
+    assert spec.console_static_dir == spec.working_dir / "console_static"
+    assert spec.agent_prompt_files == ()
 
 
 def test_product_spec_preserves_downstream_env_prefix_priority():
@@ -74,7 +78,22 @@ def test_logging_spec_from_product_uses_product_namespace_and_working_dir():
 
 def test_builtin_channel_spec_requires_key():
     with pytest.raises(ValueError, match="key is required"):
-        BuiltinChannelSpec(key="")
+        BuiltinChannelSpec(key="", factory=object)
 
-    spec = BuiltinChannelSpec(key="console")
+    spec = BuiltinChannelSpec(key="console", factory=object)
     assert spec.key == "console"
+
+
+def test_builtin_channel_spec_success_shape():
+    spec = BuiltinChannelSpec(
+        key="console",
+        factory=object,
+        required=True,
+        default_enabled=False,
+        display_name="Console",
+    )
+
+    assert spec.factory is object
+    assert spec.required is True
+    assert spec.default_enabled is False
+    assert spec.display_name == "Console"

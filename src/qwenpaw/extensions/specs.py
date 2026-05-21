@@ -152,35 +152,39 @@ class CliCommandPatch:
     """Describes one CLI command extension."""
 
     name: str
-    callback: Callable[..., Any]
-    help: str = ""
-    aliases: tuple[str, ...] = ()
+    module: str
+    attribute: str
 
 
 @dataclass
 class CliPatch:
     """CLI extension patch set."""
 
-    commands: tuple[CliCommandPatch, ...] = ()
+    add: tuple[CliCommandPatch, ...] = ()
+    replace: tuple[CliCommandPatch, ...] = ()
+    disable: tuple[str, ...] = ()
+    aliases: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
 class AppPatch:
     """Application extension hooks."""
 
+    routers: tuple[Any, ...] = ()
     startup_hooks: tuple[Callable[..., Any], ...] = ()
     shutdown_hooks: tuple[Callable[..., Any], ...] = ()
-    routes: tuple[Any, ...] = ()
+    middleware_hooks: tuple[Callable[..., Any], ...] = ()
+    before_include_routers: tuple[Callable[..., Any], ...] = ()
+    after_include_routers: tuple[Callable[..., Any], ...] = ()
 
 
 @dataclass
 class ProviderPatch:
     """Provider registration patch."""
 
-    key: str
-    factory: Callable[..., Any]
-    name: str | None = None
-    description: str = ""
+    provider_id: str
+    provider_cls: type[Any]
+    replace: bool = False
 
 
 @dataclass
@@ -188,11 +192,13 @@ class BuiltinChannelSpec:
     """Built-in channel registration spec."""
 
     key: str
-    channel_cls: type[Any] | None = None
-    name: str | None = None
-    description: str = ""
-    enabled_by_default: bool = True
+    factory: Callable[..., Any]
     config_model: type[Any] | None = None
+    required: bool = False
+    default_enabled: bool = True
+    route_hook: Callable[..., Any] | None = None
+    display_name: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.key:
@@ -203,7 +209,8 @@ class BuiltinChannelSpec:
 class ExtensionSpec:
     """Top-level extension SDK spec."""
 
-    product: ProductSpec = field(default_factory=ProductSpec)
+    name: str
+    product: ProductSpec | None = None
     logging: LoggingSpec | None = None
     features: FeaturePolicy = field(default_factory=FeaturePolicy)
     plugin_policy: PluginPolicy = field(default_factory=PluginPolicy)
@@ -213,5 +220,5 @@ class ExtensionSpec:
     builtin_channels: tuple[BuiltinChannelSpec, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.logging is None:
+        if self.logging is None and self.product is not None:
             self.logging = LoggingSpec.from_product(self.product)
