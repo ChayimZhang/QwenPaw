@@ -19,10 +19,13 @@ class ExtensionRegistry:
     """In-process extension state shared by SDK adapters."""
 
     def __init__(self) -> None:
+        from qwenpaw.extensions.cli import CliRegistry
+
         self.product = ProductSpec()
         self.logging = LoggingSpec.from_product(self.product)
         self.features = FeaturePolicy()
         self.plugins = PluginPolicy()
+        self.cli = CliRegistry()
         self.extensions: dict[str, object] = {}
 
     def configure_product(self, spec: ProductSpec) -> None:
@@ -136,6 +139,15 @@ class ExtensionBuilder:
         self.registry.configure_features(
             FeaturePolicy(disabled_providers=set(provider_ids))
         )
+        return self
+
+    def cli_command(
+        self,
+        name: str,
+        module: str,
+        attribute: str,
+    ) -> "ExtensionBuilder":
+        self.registry.cli.add_command(name, module, attribute)
         return self
 
     def _apply_product(self) -> None:

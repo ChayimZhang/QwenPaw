@@ -1,5 +1,6 @@
 """Public extension SDK exports."""
 
+from qwenpaw.extensions.cli import CliRegistry
 from qwenpaw.extensions.env import EnvResolver
 from qwenpaw.extensions.loader import load_extensions
 from qwenpaw.extensions.logging import resolve_logging_spec
@@ -26,6 +27,7 @@ __all__ = [
     "BuiltinChannelSpec",
     "CliCommandPatch",
     "CliPatch",
+    "CliRegistry",
     "EnvResolver",
     "ExtensionRegistry",
     "ExtensionSpec",
