@@ -21,6 +21,12 @@ def _normalize_path_tuple(values: Iterable[str | Path]) -> tuple[Path, ...]:
     return tuple(_normalize_path(value) for value in values)
 
 
+def _normalize_optional_path_or_none(value: str | Path | None) -> Path | None:
+    if value is None:
+        return None
+    return _normalize_path(value)
+
+
 def _normalize_str_set(values: Iterable[str]) -> set[str]:
     return set(values)
 
@@ -43,7 +49,7 @@ class ProductSpec:
     media_dir: str | Path | None = None
     local_provider_dir: str | Path | None = None
     console_static_dir: str | Path | None = None
-    agent_prompt_files: tuple[str | Path, ...] = ()
+    agent_prompt_files: tuple[str | Path, ...] = ("AGENTS.md", "SOUL.md", "PROFILE.md")
 
     def __post_init__(self) -> None:
         if not self.env_prefixes:
@@ -71,13 +77,12 @@ class ProductSpec:
         self.media_dir = _normalize_optional_path(self.media_dir, working_dir / "media")
         self.local_provider_dir = _normalize_optional_path(
             self.local_provider_dir,
-            working_dir / "local_providers",
+            working_dir / "local_models",
         )
-        self.console_static_dir = _normalize_optional_path(
+        self.console_static_dir = _normalize_optional_path_or_none(
             self.console_static_dir,
-            working_dir / "console_static",
         )
-        self.agent_prompt_files = _normalize_path_tuple(self.agent_prompt_files)
+        self.agent_prompt_files = tuple(self.agent_prompt_files)
 
 
 @dataclass
@@ -195,7 +200,7 @@ class BuiltinChannelSpec:
     factory: Callable[..., Any]
     config_model: type[Any] | None = None
     required: bool = False
-    default_enabled: bool = True
+    default_enabled: bool = False
     route_hook: Callable[..., Any] | None = None
     display_name: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)

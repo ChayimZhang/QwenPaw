@@ -23,11 +23,17 @@ def test_product_spec_defaults_expand_paths_under_working_dir():
     assert spec.plugins_dir == spec.working_dir / "plugins"
     assert spec.custom_channels_dir == spec.working_dir / "custom_channels"
     assert spec.media_dir == spec.working_dir / "media"
-    assert spec.local_provider_dir == spec.working_dir / "local_providers"
+    assert spec.local_provider_dir == spec.working_dir / "local_models"
     assert spec.product_version is None
     assert spec.skill_cli_name is None
-    assert spec.console_static_dir == spec.working_dir / "console_static"
-    assert spec.agent_prompt_files == ()
+    assert spec.console_static_dir is None
+    assert spec.agent_prompt_files == ("AGENTS.md", "SOUL.md", "PROFILE.md")
+
+
+def test_product_spec_normalizes_explicit_console_static_dir():
+    spec = ProductSpec(console_static_dir="~/myproduct/console")
+
+    assert spec.console_static_dir == Path("~/myproduct/console").expanduser()
 
 
 def test_product_spec_preserves_downstream_env_prefix_priority():
@@ -82,6 +88,7 @@ def test_builtin_channel_spec_requires_key():
 
     spec = BuiltinChannelSpec(key="console", factory=object)
     assert spec.key == "console"
+    assert spec.default_enabled is False
 
 
 def test_builtin_channel_spec_success_shape():
