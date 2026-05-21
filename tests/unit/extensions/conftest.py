@@ -1,4 +1,12 @@
-"""Extension test fixtures.
+"""Extension test fixtures."""
 
-Task 2 will add registry fixtures here once the registry exists.
-"""
+import pytest
+
+from qwenpaw.extensions import ExtensionRegistry, use_extension_registry
+
+
+@pytest.fixture
+def extension_registry():
+    registry = ExtensionRegistry()
+    with use_extension_registry(registry):
+        yield registry
