@@ -31,7 +31,7 @@ def _normalize_str_set(values: Iterable[str]) -> set[str]:
     return set(values)
 
 
-@dataclass
+@dataclass(frozen=True)
 class ProductSpec:
     """Product-level extension settings."""
 
@@ -59,52 +59,72 @@ class ProductSpec:
                 raise ValueError("env_prefixes must be non-empty uppercase strings")
 
         working_dir = _normalize_path(self.working_dir)
-        self.working_dir = working_dir
-        self.secret_dir = _normalize_path(self.secret_dir)
-        self.env_prefixes = tuple(self.env_prefixes)
-        self.backup_dir = _normalize_optional_path(
-            self.backup_dir,
-            working_dir / "backups",
+        object.__setattr__(self, "working_dir", working_dir)
+        object.__setattr__(self, "secret_dir", _normalize_path(self.secret_dir))
+        object.__setattr__(self, "env_prefixes", tuple(self.env_prefixes))
+        object.__setattr__(
+            self,
+            "backup_dir",
+            _normalize_optional_path(self.backup_dir, working_dir / "backups"),
         )
-        self.plugins_dir = _normalize_optional_path(
-            self.plugins_dir,
-            working_dir / "plugins",
+        object.__setattr__(
+            self,
+            "plugins_dir",
+            _normalize_optional_path(self.plugins_dir, working_dir / "plugins"),
         )
-        self.custom_channels_dir = _normalize_optional_path(
-            self.custom_channels_dir,
-            working_dir / "custom_channels",
+        object.__setattr__(
+            self,
+            "custom_channels_dir",
+            _normalize_optional_path(
+                self.custom_channels_dir,
+                working_dir / "custom_channels",
+            ),
         )
-        self.media_dir = _normalize_optional_path(self.media_dir, working_dir / "media")
-        self.local_provider_dir = _normalize_optional_path(
-            self.local_provider_dir,
-            working_dir / "local_models",
+        object.__setattr__(
+            self,
+            "media_dir",
+            _normalize_optional_path(self.media_dir, working_dir / "media"),
         )
-        self.console_static_dir = _normalize_optional_path_or_none(
-            self.console_static_dir,
+        object.__setattr__(
+            self,
+            "local_provider_dir",
+            _normalize_optional_path(
+                self.local_provider_dir,
+                working_dir / "local_models",
+            ),
         )
-        self.agent_prompt_files = tuple(self.agent_prompt_files)
+        object.__setattr__(
+            self,
+            "console_static_dir",
+            _normalize_optional_path_or_none(self.console_static_dir),
+        )
+        object.__setattr__(self, "agent_prompt_files", tuple(self.agent_prompt_files))
 
 
-@dataclass
+@dataclass(frozen=True)
 class LoggingSpec:
     """Logging configuration exposed to extensions."""
 
-    namespace: str
-    file_path: str | Path
+    namespace: str = "qwenpaw"
+    file_path: str | Path | None = None
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     level: str = "INFO"
     handler_factory: Callable[..., Any] | None = None
 
     def __post_init__(self) -> None:
-        self.file_path = _normalize_path(self.file_path)
+        if self.file_path is not None:
+            object.__setattr__(self, "file_path", _normalize_path(self.file_path))
 
     @classmethod
     def from_product(cls, product: ProductSpec) -> "LoggingSpec":
         namespace = product.product_name.lower().replace(" ", "")
-        return cls(namespace=namespace, file_path=product.working_dir / f"{namespace}.log")
+        return cls(
+            namespace=namespace,
+            file_path=product.working_dir / f"{namespace}.log",
+        )
 
 
-@dataclass
+@dataclass(frozen=True)
 class FeaturePolicy:
     """Feature, channel, provider, and plugin allow/deny policy."""
 
@@ -115,11 +135,31 @@ class FeaturePolicy:
     allowed_plugins: Iterable[str] = field(default_factory=set)
 
     def __post_init__(self) -> None:
-        self.disabled_features = _normalize_str_set(self.disabled_features)
-        self.disabled_channels = _normalize_str_set(self.disabled_channels)
-        self.disabled_providers = _normalize_str_set(self.disabled_providers)
-        self.disabled_plugins = _normalize_str_set(self.disabled_plugins)
-        self.allowed_plugins = _normalize_str_set(self.allowed_plugins)
+        object.__setattr__(
+            self,
+            "disabled_features",
+            _normalize_str_set(self.disabled_features),
+        )
+        object.__setattr__(
+            self,
+            "disabled_channels",
+            _normalize_str_set(self.disabled_channels),
+        )
+        object.__setattr__(
+            self,
+            "disabled_providers",
+            _normalize_str_set(self.disabled_providers),
+        )
+        object.__setattr__(
+            self,
+            "disabled_plugins",
+            _normalize_str_set(self.disabled_plugins),
+        )
+        object.__setattr__(
+            self,
+            "allowed_plugins",
+            _normalize_str_set(self.allowed_plugins),
+        )
 
     def is_feature_enabled(self, key: str) -> bool:
         return key not in self.disabled_features
@@ -138,7 +178,7 @@ class FeaturePolicy:
         return True
 
 
-@dataclass
+@dataclass(frozen=True)
 class PluginPolicy:
     """Plugin discovery and enablement policy."""
 
@@ -147,12 +187,24 @@ class PluginPolicy:
     extra_search_paths: Iterable[str | Path] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
-        self.disabled_plugins = _normalize_str_set(self.disabled_plugins)
-        self.allowed_plugins = _normalize_str_set(self.allowed_plugins)
-        self.extra_search_paths = _normalize_path_tuple(self.extra_search_paths)
+        object.__setattr__(
+            self,
+            "disabled_plugins",
+            _normalize_str_set(self.disabled_plugins),
+        )
+        object.__setattr__(
+            self,
+            "allowed_plugins",
+            _normalize_str_set(self.allowed_plugins),
+        )
+        object.__setattr__(
+            self,
+            "extra_search_paths",
+            _normalize_path_tuple(self.extra_search_paths),
+        )
 
 
-@dataclass
+@dataclass(frozen=True)
 class CliCommandPatch:
     """Describes one CLI command extension."""
 
@@ -161,7 +213,7 @@ class CliCommandPatch:
     attribute: str
 
 
-@dataclass
+@dataclass(frozen=True)
 class CliPatch:
     """CLI extension patch set."""
 
@@ -171,7 +223,7 @@ class CliPatch:
     aliases: dict[str, str] = field(default_factory=dict)
 
 
-@dataclass
+@dataclass(frozen=True)
 class AppPatch:
     """Application extension hooks."""
 
@@ -183,7 +235,7 @@ class AppPatch:
     after_include_routers: tuple[Callable[..., Any], ...] = ()
 
 
-@dataclass
+@dataclass(frozen=True)
 class ProviderPatch:
     """Provider registration patch."""
 
@@ -192,7 +244,7 @@ class ProviderPatch:
     replace: bool = False
 
 
-@dataclass
+@dataclass(frozen=True)
 class BuiltinChannelSpec:
     """Built-in channel registration spec."""
 
@@ -210,7 +262,7 @@ class BuiltinChannelSpec:
             raise ValueError("key is required")
 
 
-@dataclass
+@dataclass(frozen=True)
 class ExtensionSpec:
     """Top-level extension SDK spec."""
 
@@ -226,4 +278,4 @@ class ExtensionSpec:
 
     def __post_init__(self) -> None:
         if self.logging is None and self.product is not None:
-            self.logging = LoggingSpec.from_product(self.product)
+            object.__setattr__(self, "logging", LoggingSpec.from_product(self.product))

@@ -87,6 +87,16 @@ def test_logging_spec_from_product_uses_product_namespace_and_working_dir():
     assert logging.file_path == product.working_dir / "myproduct.log"
 
 
+def test_logging_spec_defaults():
+    logging = LoggingSpec()
+
+    assert logging.namespace == "qwenpaw"
+    assert logging.file_path is None
+    assert logging.format == "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    assert logging.level == "INFO"
+    assert logging.handler_factory is None
+
+
 def test_builtin_channel_spec_requires_key():
     with pytest.raises(ValueError, match="key is required"):
         BuiltinChannelSpec(key="", factory=object)
