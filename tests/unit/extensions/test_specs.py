@@ -78,6 +78,22 @@ def test_feature_policy_normalizes_sets_and_checks_enabled_state():
     assert not policy.is_plugin_enabled("other")
 
 
+def test_feature_policy_accepts_none_values():
+    policy = FeaturePolicy(
+        disabled_features=None,
+        disabled_channels=None,
+        disabled_providers=None,
+        disabled_plugins=None,
+        allowed_plugins=None,
+    )
+
+    assert policy.disabled_features == set()
+    assert policy.disabled_channels == set()
+    assert policy.disabled_providers == set()
+    assert policy.disabled_plugins == set()
+    assert policy.allowed_plugins == set()
+
+
 def test_logging_spec_from_product_uses_product_namespace_and_working_dir():
     product = ProductSpec(product_name="My Product", working_dir="~/myproduct")
 

@@ -27,8 +27,10 @@ def _normalize_optional_path_or_none(value: str | Path | None) -> Path | None:
     return _normalize_path(value)
 
 
-def _normalize_str_set(values: Iterable[str]) -> set[str]:
-    return set(values)
+def _normalize_str_set(values: Iterable[str] | None) -> set[str]:
+    if values is None:
+        return set()
+    return {str(value).strip() for value in values if str(value).strip()}
 
 
 @dataclass(frozen=True)
@@ -128,11 +130,11 @@ class LoggingSpec:
 class FeaturePolicy:
     """Feature, channel, provider, and plugin allow/deny policy."""
 
-    disabled_features: Iterable[str] = field(default_factory=set)
-    disabled_channels: Iterable[str] = field(default_factory=set)
-    disabled_providers: Iterable[str] = field(default_factory=set)
-    disabled_plugins: Iterable[str] = field(default_factory=set)
-    allowed_plugins: Iterable[str] = field(default_factory=set)
+    disabled_features: Iterable[str] | None = field(default_factory=set)
+    disabled_channels: Iterable[str] | None = field(default_factory=set)
+    disabled_providers: Iterable[str] | None = field(default_factory=set)
+    disabled_plugins: Iterable[str] | None = field(default_factory=set)
+    allowed_plugins: Iterable[str] | None = field(default_factory=set)
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -182,9 +184,9 @@ class FeaturePolicy:
 class PluginPolicy:
     """Plugin discovery and enablement policy."""
 
-    disabled_plugins: Iterable[str] = field(default_factory=set)
-    allowed_plugins: Iterable[str] = field(default_factory=set)
-    extra_search_paths: Iterable[str | Path] = field(default_factory=tuple)
+    disabled_plugins: Iterable[str] | None = field(default_factory=set)
+    allowed_plugins: Iterable[str] | None = field(default_factory=set)
+    extra_search_paths: Iterable[str | Path] | None = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -200,7 +202,7 @@ class PluginPolicy:
         object.__setattr__(
             self,
             "extra_search_paths",
-            _normalize_path_tuple(self.extra_search_paths),
+            _normalize_path_tuple(self.extra_search_paths or ()),
         )
 
 
