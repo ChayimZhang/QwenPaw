@@ -83,6 +83,7 @@ QwenPaw 是一个开源个人 Agent 助手，后端基于 Python、FastAPI、Cli
 ```text
 src/qwenpaw/extensions/
   __init__.py
+  adapters.py
   config.py
   env.py
   registry.py
@@ -107,9 +108,13 @@ src/qwenpaw/extensions/
 - `CliPatch`：Click 命令增删改、别名、隐藏原命令、替换 command group。
 - `AppPatch`：FastAPI router 增删改、startup/shutdown hook、middleware hook、lifespan hook、console static dir。
 - `ProviderPatch`：禁用、替换、注册 provider。
-- `ChannelPatch`：禁用、替换、注册 channel。
+- `ChannelPatch`：禁用、替换、注册 channel。必须区分 built-in channel 与 custom channel。
+- `BuiltinChannelSpec`：内置 channel 注册规格，包括 key、channel class、config model、是否 required、API 路由 hook、文档元信息、默认启用策略。
+- `CustomChannelSource`：自定义 channel 来源，包括工作目录 `custom_channels/`、额外搜索目录、entry point 来源。
 - `AgentTemplatePatch`：注册 agent template、覆盖默认 prompt 文件、禁用 builtin QA。
 - `PluginPolicy`：禁用插件、允许插件、增加插件搜索目录。
+- `ExtensionContext`：业务扩展运行上下文，统一访问产品信息、env resolver、工作目录、FastAPI app、plugin registry、provider manager、skill services 等现有能力。
+- `ExtensionAdapters`：把 QwenPaw 已有扩展能力封装成统一 façade，例如 plugin、skill、provider、channel、router、control command、agent template。
 
 ## 业务侧使用方式
 
@@ -240,6 +245,32 @@ def product_router() -> APIRouter:
 
 装饰器 API 与显式 `register(registry)` 函数可以并存。复杂场景使用显式 registry 更直观，简单声明使用装饰器更轻。
 
+除装饰器外，还应提供以下高级易用特性，进一步降低业务接入复杂度：
+
+- Fluent builder：
+
+```python
+def register(registry):
+    (
+        registry.extension("my_product")
+        .product(name="MyProduct", cli_name="myproduct")
+        .env_prefix("MYPRODUCT")
+        .disable_features("builtin_qa_agent", "telemetry")
+        .disable_channels("wechat", "qq")
+        .disable_providers("openrouter")
+        .console_static_dir("/opt/myproduct/console")
+    )
+```
+
+- 声明式 manifest：业务包可以只提供 `extension.yaml`，由 SDK 自动加载并注册，适合简单产品线。
+- Pydantic/dataclass spec：业务可以导出 `ExtensionSpec` 对象，SDK 负责校验和应用。
+- 自动发现约定：如果业务包暴露 `qwenpaw_extension.py` 或 `extension.py` 且包含 `extension` / `register`，entry point 可以省略为简写工具生成。
+- 上下文管理器：测试或嵌入式运行时可用 `with registry.apply_extension(spec): ...` 临时启用扩展，退出后恢复全局 registry，方便 pytest 隔离。
+- 依赖注入：业务 hook 可声明 `ExtensionContext`、`FastAPI`、`ProviderManager`、`SkillPoolService` 等参数，SDK 根据类型注入，减少手写 import 和全局单例访问。
+- Feature packs：把一组常用禁用项或注册项打包为 preset，例如 `MinimalConsolePack`、`NoExternalChannelsPack`，业务通过配置启用。
+- 延迟代理对象：对于 FastAPI app、ProviderManager、PluginRegistry 等启动后才可用的对象，SDK 暴露 lazy proxy，业务代码不需要关心初始化时序。
+- CLI 自动脚手架：提供 `qwenpaw extension scaffold` 生成业务 extension 包骨架、entry point、测试 fixture 和文档模板。
+
 ## 数据流
 
 启动时的推荐顺序：
@@ -253,6 +284,7 @@ def product_router() -> APIRouter:
 7. Channel registry 返回前应用 channel policy。
 8. migration 创建 default/QA agent 前检查 feature policy。
 9. plugin loader 发现和加载插件前应用 plugin policy。
+10. extension adapters 把已有 plugin、skill、provider、channel、router、control command 等注册请求分发到 QwenPaw 原生实现。
 
 ## 关键设计
 
@@ -336,13 +368,81 @@ myproduct = "qwenpaw.cli.main:cli"
 
 ### Channel
 
+Channel 扩展必须明确区分两类：
+
+- Built-in channel：作为产品运行时的一等内置能力注册，进入内置 channel registry，可出现在 `BUILTIN_CHANNEL_KEYS` 等价集合中，可有自己的 typed config model、默认配置、required 标识、内置 API 路由和文档元信息。
+- Custom channel：用户或运维通过工作目录、额外搜索目录、entry point 动态安装的 channel，适合现场扩展，不应被当成产品内置能力。
+
 `get_channel_registry()` 返回前应用 policy：
 
 - 删除 disabled channel。
 - replacement channel 覆盖同 key。
-- additional channel 合并进入 registry。
+- additional built-in channel 合并进入 built-in registry，并参与 channel types、config defaults、CLI install/remove 判断。
+- additional custom channel 合并进入 custom registry，不进入 built-in 集合。
 
 `get_available_channels()` 仍支持环境变量过滤，但改用 `EnvResolver` 支持业务前缀。
+
+业务 SDK API 示例：
+
+```python
+def register(registry):
+    registry.channels.register_builtin(
+        key="internal_chat",
+        channel_class=InternalChatChannel,
+        config_model=InternalChatConfig,
+        required=False,
+        default_enabled=False,
+        route_hook=register_internal_chat_routes,
+        description="Internal enterprise chat channel",
+    )
+
+    registry.channels.disable_builtin("wechat")
+    registry.channels.replace_builtin("console", EnterpriseConsoleChannel)
+    registry.channels.add_custom_search_dir("/opt/myproduct/channels")
+```
+
+实现约束：
+
+- `BUILTIN_CHANNEL_KEYS` 不能继续只等于静态 `_BUILTIN_SPECS.keys()`；它应由 extension-aware registry 计算。
+- `qwenpaw channels install/remove` 对 built-in channel 和 custom channel 的提示、保护、配置写入必须基于 extension-aware registry。
+- FastAPI route hook 也要支持 built-in channel，不只支持 `custom_channels/` 模块级 `register_app_routes(app)`。
+- required channel 保护仍然保留，业务要禁用 required channel 必须显式声明 override。
+
+### 统一扩展入口
+
+QwenPaw 已有多套扩展能力，Extension SDK 应作为统一入口暴露它们，而不是让业务分别学习 `PluginApi`、`PluginRegistry`、`SkillPoolService`、custom channel 目录、control command registry 等内部细节。
+
+统一 façade 应覆盖：
+
+- Plugin：加载、禁用、额外目录、插件配置覆盖，复用 `PluginLoader` / `PluginRegistry`。
+- Provider：注册 plugin provider、禁用或替换内置 provider，复用 `ProviderManager`。
+- Tool：注册 agent tool、配置默认启用状态、同步到 agent `ToolsConfig`。
+- FastAPI：注册 router、middleware、startup/shutdown/lifespan hook，保证在 SPA catch-all 前挂载。
+- Control command：注册 `/slash` 命令处理器，复用 `app.runner.control_commands.register_command` 和 channel `CommandRegistry`。
+- Channel：注册 built-in channel、custom channel 搜索目录、channel route hook、channel policy。
+- Skill：导入 skill 到 skill pool、安装到 workspace、设置启用状态、按 channel 生效。
+- Agent template：注册模板、默认 prompt 文件、workspace 初始化 hook、默认 agent profile。
+- Env：读取、写入、持久化业务前缀环境变量，复用 `envs.store` 的加密存储。
+- Logging：注册日志格式、handler、namespace。
+- Frontend：替换 console static dir、注册 frontend plugin 资源。
+- Doctor：注册诊断项和自动修复项，复用已有 doctor entry point 风格。
+- Backup/restore：注册需要纳入备份的扩展目录或排除项。
+
+Facade 示例：
+
+```python
+def register(registry):
+    ext = registry.extension("my_product")
+
+    ext.providers.register("internal-llm", InternalProvider)
+    ext.channels.register_builtin("internal_chat", InternalChatChannel)
+    ext.skills.install_pool_skill("enterprise-policy", source=POLICY_SKILL_DIR)
+    ext.plugins.add_search_dir("/opt/myproduct/plugins")
+    ext.commands.register(EnterpriseStatusCommand())
+    ext.app.include_router(enterprise_router, prefix="/enterprise")
+```
+
+底层实现可以继续调用现有 QwenPaw API；extension SDK 的职责是提供稳定、统一、文档化、可测试的业务入口。
 
 ### Agent 人设和 QA Agent
 
@@ -398,7 +498,7 @@ plugin loader discover 后、load 前应用 policy。
 6. 日志名称/路径/格式：`LoggingSpec`。
 7. 环境变量名称：`EnvResolver` 多前缀解析。
 8. Click 命令增删改：`CliPatch`。
-9. channel 增删改：`ChannelPatch`。
+9. channel 增删改：`ChannelPatch`，并区分 built-in channel 与 custom channel。
 10. 禁用功能：`FeaturePolicy` 配置文件。
 11. provider 增删改：`ProviderPatch`。
 12. 插件增删改：`PluginPolicy` + 现有 plugin API。
@@ -422,7 +522,8 @@ plugin loader discover 后、load 前应用 policy。
 - `ProductSpec` 默认值兼容当前 `QWENPAW_*` 行为。
 - CLI registry 的 add/disable/replace/alias。
 - Provider registry 禁用/替换/新增。
-- Channel registry 禁用/替换/新增。
+- Channel registry 禁用/替换/新增，分别覆盖 built-in channel 与 custom channel。
+- Extension facade 调用现有 plugin、skill、provider、channel、router、control command 能力的适配层。
 - Feature policy 禁用 builtin QA agent。
 - LoggingSpec 生成 namespace 和 log path。
 
@@ -431,6 +532,8 @@ plugin loader discover 后、load 前应用 policy。
 - 使用临时工作目录启动 FastAPI，验证业务前缀变量优先于 `QWENPAW_WORKING_DIR`。
 - 安装一个测试 extension entry point，验证 `/api/version`、console static、provider list、channel types。
 - 使用业务 CLI script 指向 `qwenpaw.cli.main:cli` 测试 CLI 命令别名。
+- 注册一个测试 built-in channel，验证它出现在 channel types、配置默认值、CLI built-in 判断和 route hook 中。
+- 注册一个测试 custom channel 搜索目录，验证它不会进入 built-in channel 集合。
 - 禁用 QA agent 后启动，验证不会新建 QA profile。
 
 兼容性测试：
@@ -468,7 +571,10 @@ plugin loader discover 后、load 前应用 policy。
 - 产品名、版本、CLI 名、工作目录、secret 目录、日志、前端资源替换示例。
 - Click 命令增删改示例。
 - FastAPI router 和 lifespan hook 示例。
-- channel/provider/plugin/tool/agent template 注册、禁用、替换示例。
+- built-in channel 与 custom channel 的差异、注册、禁用、替换示例。
+- channel/provider/plugin/tool/skill/control command/agent template 注册、禁用、替换示例。
+- 如何通过 Extension SDK 统一调用 QwenPaw 已有 plugin、skill、provider、channel、router 等扩展能力。
+- 装饰器、fluent builder、声明式 manifest、上下文管理器、依赖注入、feature pack 的使用示例和适用场景。
 - 禁用内置功能的配置清单和示例。
 - 常见错误和排查方法。
 - 测试业务 extension 的推荐 pytest fixture。
