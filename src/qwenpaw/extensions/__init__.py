@@ -2,6 +2,7 @@
 
 from qwenpaw.extensions.env import EnvResolver
 from qwenpaw.extensions.loader import load_extensions
+from qwenpaw.extensions.logging import resolve_logging_spec
 from qwenpaw.extensions.specs import (
     AppPatch,
     BuiltinChannelSpec,
@@ -35,5 +36,6 @@ __all__ = [
     "ProviderPatch",
     "get_extension_registry",
     "load_extensions",
+    "resolve_logging_spec",
     "use_extension_registry",
 ]
