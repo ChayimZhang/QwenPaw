@@ -3,11 +3,6 @@ import logging
 import os
 import time
 
-from .utils.logging import setup_logger
-
-# Fallback before we can safely read canonical constant definitions.
-LOG_LEVEL_ENV = "QWENPAW_LOG_LEVEL"
-
 _bootstrap_err: Exception | None = None
 try:
     # Load persisted env vars before importing modules that read env-backed
@@ -18,6 +13,14 @@ try:
 except Exception as exc:
     # Best effort: package import should not fail if env bootstrap fails.
     _bootstrap_err = exc
+
+try:
+    from .constant import LOG_LEVEL_ENV
+except Exception:
+    # Fallback before we can safely read canonical constant definitions.
+    LOG_LEVEL_ENV = "QWENPAW_LOG_LEVEL"
+
+from .utils.logging import setup_logger
 
 _t0 = time.perf_counter()
 setup_logger(os.environ.get(LOG_LEVEL_ENV, "info"))

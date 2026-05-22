@@ -86,9 +86,9 @@ class EnvVarLoader:
 
 
 # WORKING_DIR priority:
-# 1. QWENPAW_WORKING_DIR / COPAW_WORKING_DIR env var is set → use it
-# 2. ~/.copaw exists (legacy installation) → use it as-is
-# 3. Default → ~/.qwenpaw
+# 1. Product-prefixed WORKING_DIR env var, then QWENPAW/COPAW fallbacks.
+# 2. ~/.copaw exists in the default product profile (legacy installation).
+# 3. ProductSpec.working_dir.
 _explicit_working_dir = _get_env("WORKING_DIR")
 if _explicit_working_dir:
     WORKING_DIR = Path(_explicit_working_dir).expanduser().resolve()
@@ -199,6 +199,7 @@ MAX_LOAD_HISTORY_COUNT = 10000
 
 # Env key for app log level (used by CLI and app load for reload child).
 LOG_LEVEL_ENV = _ENV.key("LOG_LEVEL")
+RELOAD_MODE_ENV = _ENV.key("RELOAD_MODE")
 
 # Env to indicate running inside a container (e.g. Docker). Set to 1/true/yes.
 RUNNING_IN_CONTAINER = EnvVarLoader.get_bool(
