@@ -1075,33 +1075,93 @@ class ProviderManager:  # pylint: disable=too-many-public-methods
                 pass
 
     def _init_builtins(self):
-        self._add_builtin(PROVIDER_QWENPAW)
-        self._add_builtin(PROVIDER_OLLAMA)
-        self._add_builtin(PROVIDER_LMSTUDIO)
-        self._add_builtin(PROVIDER_OPENROUTER)
-        self._add_builtin(PROVIDER_MODELSCOPE)
-        self._add_builtin(PROVIDER_DASHSCOPE)
-        self._add_builtin(PROVIDER_ALIYUN_CODINGPLAN)
-        self._add_builtin(PROVIDER_ALIYUN_CODINGPLAN_INTL)
-        self._add_builtin(PROVIDER_ALIYUN_TOKENPLAN)
-        self._add_builtin(PROVIDER_OPENCODE)
-        self._add_builtin(PROVIDER_OPENAI)
-        self._add_builtin(PROVIDER_AZURE_OPENAI)
-        self._add_builtin(PROVIDER_ANTHROPIC)
-        self._add_builtin(PROVIDER_GEMINI)
-        self._add_builtin(PROVIDER_DEEPSEEK)
-        self._add_builtin(PROVIDER_KIMI_CN)
-        self._add_builtin(PROVIDER_KIMI_INTL)
-        self._add_builtin(PROVIDER_MINIMAX_CN)
-        self._add_builtin(PROVIDER_MINIMAX)
-        self._add_builtin(PROVIDER_ZHIPU_CN)
-        self._add_builtin(PROVIDER_ZHIPU_CN_CODINGPLAN)
-        self._add_builtin(PROVIDER_ZHIPU_INTL)
-        self._add_builtin(PROVIDER_ZHIPU_INTL_CODINGPLAN)
-        self._add_builtin(PROVIDER_SILICONFLOW_CN)
-        self._add_builtin(PROVIDER_SILICONFLOW_INTL)
-        self._add_builtin(PROVIDER_VOLCENGINE_CN)
-        self._add_builtin(PROVIDER_VOLCENGINE_CN_CODINGPLAN)
+        from qwenpaw.extensions import get_extension_registry, load_extensions
+
+        load_extensions()
+        extension_registry = get_extension_registry()
+        providers = extension_registry.providers.apply_policy(
+            self._default_builtin_providers(),
+            extension_registry.features,
+        )
+        for provider_id, provider in providers.items():
+            self._add_builtin(
+                self._coerce_builtin_provider(provider_id, provider),
+            )
+
+    @staticmethod
+    def _default_builtin_providers() -> dict[str, Provider]:
+        defaults = (
+            PROVIDER_QWENPAW,
+            PROVIDER_OLLAMA,
+            PROVIDER_LMSTUDIO,
+            PROVIDER_OPENROUTER,
+            PROVIDER_MODELSCOPE,
+            PROVIDER_DASHSCOPE,
+            PROVIDER_ALIYUN_CODINGPLAN,
+            PROVIDER_ALIYUN_CODINGPLAN_INTL,
+            PROVIDER_ALIYUN_TOKENPLAN,
+            PROVIDER_OPENCODE,
+            PROVIDER_OPENAI,
+            PROVIDER_AZURE_OPENAI,
+            PROVIDER_ANTHROPIC,
+            PROVIDER_GEMINI,
+            PROVIDER_DEEPSEEK,
+            PROVIDER_KIMI_CN,
+            PROVIDER_KIMI_INTL,
+            PROVIDER_MINIMAX_CN,
+            PROVIDER_MINIMAX,
+            PROVIDER_ZHIPU_CN,
+            PROVIDER_ZHIPU_CN_CODINGPLAN,
+            PROVIDER_ZHIPU_INTL,
+            PROVIDER_ZHIPU_INTL_CODINGPLAN,
+            PROVIDER_SILICONFLOW_CN,
+            PROVIDER_SILICONFLOW_INTL,
+            PROVIDER_VOLCENGINE_CN,
+            PROVIDER_VOLCENGINE_CN_CODINGPLAN,
+        )
+        return {provider.id: provider for provider in defaults}
+
+    def _coerce_builtin_provider(
+        self,
+        provider_id: str,
+        candidate,
+    ) -> Provider:
+        if isinstance(candidate, Provider):
+            provider = candidate
+        elif isinstance(candidate, ProviderInfo):
+            provider = self._provider_from_data(candidate.model_dump())
+        elif (
+            isinstance(candidate, type)
+            and issubclass(candidate, Provider)
+        ):
+            try:
+                provider = candidate()
+            except TypeError:
+                provider = candidate(id=provider_id, name=provider_id)
+        elif callable(candidate):
+            provider = candidate()
+            if isinstance(provider, ProviderInfo) and not isinstance(
+                provider,
+                Provider,
+            ):
+                provider = self._provider_from_data(provider.model_dump())
+        else:
+            raise TypeError(
+                f"Provider extension for {provider_id!r} must be a Provider, "
+                "ProviderInfo, Provider subclass, or factory.",
+            )
+
+        if not isinstance(provider, Provider):
+            raise TypeError(
+                f"Provider extension for {provider_id!r} did not produce "
+                "a Provider instance.",
+            )
+        if provider.id != provider_id:
+            raise ValueError(
+                f"Provider extension key {provider_id!r} does not match "
+                f"provider id {provider.id!r}.",
+            )
+        return provider
 
     def _add_builtin(self, provider: Provider):
         self.builtin_providers[provider.id] = provider

@@ -6,6 +6,7 @@ from qwenpaw.extensions.app import AppExtensionRegistry, RouterRegistration
 from qwenpaw.extensions.channels import ChannelExtensionRegistry
 from qwenpaw.extensions.loader import load_extensions
 from qwenpaw.extensions.logging import resolve_logging_spec
+from qwenpaw.extensions.providers import ProviderExtensionRegistry
 from qwenpaw.extensions.specs import (
     AppPatch,
     BuiltinChannelSpec,
@@ -40,6 +41,7 @@ __all__ = [
     "PluginPolicy",
     "ProductSpec",
     "ProviderPatch",
+    "ProviderExtensionRegistry",
     "RouterRegistration",
     "get_extension_registry",
     "load_extensions",

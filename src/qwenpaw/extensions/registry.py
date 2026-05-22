@@ -22,6 +22,7 @@ class ExtensionRegistry:
         from qwenpaw.extensions.app import AppExtensionRegistry
         from qwenpaw.extensions.channels import ChannelExtensionRegistry
         from qwenpaw.extensions.cli import CliRegistry
+        from qwenpaw.extensions.providers import ProviderExtensionRegistry
 
         self.product = ProductSpec()
         self.logging = LoggingSpec.from_product(self.product)
@@ -30,6 +31,7 @@ class ExtensionRegistry:
         self.app = AppExtensionRegistry()
         self.channels = ChannelExtensionRegistry()
         self.cli = CliRegistry()
+        self.providers = ProviderExtensionRegistry()
         self.extensions: dict[str, object] = {}
 
     def configure_product(self, spec: ProductSpec) -> None:
