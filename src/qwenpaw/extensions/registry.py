@@ -72,6 +72,12 @@ class ExtensionRegistry:
         self.extensions.setdefault(name, object())
         return ExtensionBuilder(self, name)
 
+    @property
+    def adapters(self):
+        from qwenpaw.extensions.adapters import ExtensionAdapters
+
+        return ExtensionAdapters(self)
+
 
 class ExtensionBuilder:
     """Fluent extension configuration helper."""
@@ -169,6 +175,14 @@ _CURRENT_REGISTRY: ContextVar[ExtensionRegistry] = ContextVar(
 
 def get_extension_registry() -> ExtensionRegistry:
     return _CURRENT_REGISTRY.get()
+
+
+class LazyRegistryProxy:
+    def __getattr__(self, name: str):
+        return getattr(get_extension_registry(), name)
+
+
+extension_registry = LazyRegistryProxy()
 
 
 @contextmanager

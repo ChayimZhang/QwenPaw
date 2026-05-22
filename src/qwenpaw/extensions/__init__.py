@@ -2,8 +2,14 @@
 
 from qwenpaw.extensions.cli import CliRegistry
 from qwenpaw.extensions.env import EnvResolver
+from qwenpaw.extensions.adapters import ExtensionAdapters
 from qwenpaw.extensions.app import AppExtensionRegistry, RouterRegistration
 from qwenpaw.extensions.channels import ChannelExtensionRegistry
+from qwenpaw.extensions.decorators import (
+    ExtensionContext,
+    ExtensionDecorator,
+    qwenpaw_extension,
+)
 from qwenpaw.extensions.features import (
     iter_plugin_search_paths,
     should_create_builtin_qa_agent,
@@ -26,6 +32,7 @@ from qwenpaw.extensions.specs import (
 )
 from qwenpaw.extensions.registry import (
     ExtensionRegistry,
+    extension_registry,
     get_extension_registry,
     use_extension_registry,
 )
@@ -39,7 +46,10 @@ __all__ = [
     "CliPatch",
     "CliRegistry",
     "EnvResolver",
+    "ExtensionAdapters",
     "ExtensionRegistry",
+    "ExtensionContext",
+    "ExtensionDecorator",
     "ExtensionSpec",
     "FeaturePolicy",
     "LoggingSpec",
@@ -48,11 +58,13 @@ __all__ = [
     "ProviderPatch",
     "ProviderExtensionRegistry",
     "RouterRegistration",
+    "extension_registry",
     "get_extension_registry",
     "iter_plugin_search_paths",
     "load_extensions",
     "resolve_logging_spec",
     "should_create_builtin_qa_agent",
     "should_load_plugin",
+    "qwenpaw_extension",
     "use_extension_registry",
 ]
