@@ -822,7 +822,15 @@ def ensure_qa_agent_exists() -> None:
 
 def _do_ensure_qa_agent() -> None:
     """Internal implementation of QA agent initialization."""
+    from qwenpaw.extensions import get_extension_registry, load_extensions
+    from qwenpaw.extensions.features import should_create_builtin_qa_agent
+
     from .routers.agents import _initialize_agent_workspace
+
+    load_extensions()
+    if not should_create_builtin_qa_agent(get_extension_registry()):
+        logger.info("Skipping builtin QA agent: disabled by extension policy")
+        return
 
     config = load_config()
     qa_id = BUILTIN_QA_AGENT_ID

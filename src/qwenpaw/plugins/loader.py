@@ -17,6 +17,8 @@ from typing import Dict, List, Optional, Tuple
 from .architecture import PluginManifest, PluginRecord
 from .api import PluginApi
 from .registry import PluginRegistry
+from ..extensions import get_extension_registry, load_extensions
+from ..extensions.features import iter_plugin_search_paths, should_load_plugin
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +32,33 @@ class PluginLoader:
         Args:
             plugin_dirs: List of directories to search for plugins
         """
-        self.plugin_dirs = [Path(d) for d in plugin_dirs]
+        load_extensions()
+        extension_registry = get_extension_registry()
+        self.plugin_dirs = self._dedupe_plugin_dirs(
+            [
+                *(Path(d) for d in plugin_dirs),
+                *iter_plugin_search_paths(extension_registry),
+            ]
+        )
         self.registry = PluginRegistry()
         self._loaded_plugins: Dict[str, PluginRecord] = {}
+
+    @staticmethod
+    def _dedupe_plugin_dirs(plugin_dirs: List[Path]) -> List[Path]:
+        out: List[Path] = []
+        seen: set[str] = set()
+        for plugin_dir in plugin_dirs:
+            path = Path(plugin_dir).expanduser()
+            try:
+                path = path.resolve()
+            except OSError:
+                pass
+            key = str(path).casefold() if os.name == "nt" else str(path)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(path)
+        return out
 
     def discover_plugins(self) -> List[Tuple[PluginManifest, Path]]:
         """Discover all plugins in plugin directories.
@@ -59,6 +85,15 @@ class PluginLoader:
 
                 try:
                     manifest = self._load_manifest(manifest_path)
+                    if not should_load_plugin(
+                        get_extension_registry(),
+                        manifest.id,
+                    ):
+                        logger.info(
+                            "Plugin disabled by extension policy: %s",
+                            manifest.id,
+                        )
+                        continue
                     discovered.append((manifest, item))
                     logger.info(f"Discovered plugin: {manifest.id}")
                 except Exception as e:
