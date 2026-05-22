@@ -276,6 +276,13 @@ ProductSpec(skill_cli_name="myproduct-skills")
 ProductSpec(agent_prompt_files=("MY_PRODUCT.md", "AGENTS.md"))
 ```
 
+也可以通过统一 facade 在配置函数中修改：
+
+```python
+def configure(ctx):
+    ctx.adapters.agent_prompt_files("MY_PRODUCT.md", "AGENTS.md")
+```
+
 迁移、默认 Agent 创建和配置默认值都会使用这组文件顺序。禁用内置 QA Agent 可以配置：
 
 ```python
@@ -356,6 +363,34 @@ def activate(api: PluginApi) -> None:
     api.extensions.router(router, prefix="/api/my-plugin")
 ```
 
+## Skills 与 Control Commands
+
+扩展 SDK 同样开放 QwenPaw 已有的 skill 管理能力。业务侧不需要直接记住底层 service 的 import 路径，可以通过 adapters 获取：
+
+```python
+api = registry.adapters
+workspace_skills = api.skill_service("/var/lib/myproduct/workspaces/default")
+pool_skills = api.skill_pool_service()
+```
+
+对于运行时控制命令，可以注册原有 control command handler，也可以同步注册优先级识别：
+
+```python
+from qwenpaw.app.runner.control_commands import BaseControlCommandHandler
+
+
+class PauseCommand(BaseControlCommandHandler):
+    command_name = "/pause"
+
+    async def handle(self, context):
+        return "paused"
+
+
+api.control_command(PauseCommand(), priority="high", priority_registry=command_registry)
+```
+
+如果业务只需要修改 click CLI 命令，请继续使用 `cli_command()`、`replace_cli_command()`、`disable_cli_command()` 和 `cli_alias()`。
+
 ## FastAPI 与前端资源
 
 注册 FastAPI router、生命周期 hook 和 middleware：
@@ -396,6 +431,65 @@ def register(registry):
     )
 ```
 
+## 声明式 ExtensionSpec
+
+除 decorator 和 fluent builder 外，entry point 也可以直接返回 `ExtensionSpec`。这种方式适合把扩展能力集中成一个不可变声明，便于审计、测试和跨产品线复用：
+
+```python
+from qwenpaw.extensions import (
+    BuiltinChannelSpec,
+    CliCommandPatch,
+    CliPatch,
+    ExtensionSpec,
+    FeaturePolicy,
+    PluginPolicy,
+    ProductSpec,
+    ProviderPatch,
+)
+
+
+extension = ExtensionSpec(
+    name="my_product",
+    product=ProductSpec(
+        product_name="MyProduct",
+        product_version="2.0.0",
+        cli_name="myproduct",
+        env_prefixes=("MYPRODUCT", "QWENPAW", "COPAW"),
+        working_dir="~/.myproduct",
+    ),
+    features=FeaturePolicy(
+        disabled_features={"builtin_qa_agent"},
+        disabled_channels={"wechat"},
+        disabled_providers={"ollama"},
+    ),
+    plugin_policy=PluginPolicy(extra_search_paths=("/opt/myproduct/plugins",)),
+    cli_patch=CliPatch(
+        add={
+            "diagnose": CliCommandPatch(
+                name="diagnose",
+                module="my_product.cli",
+                attribute="diagnose",
+            )
+        },
+        disable=frozenset({"desktop"}),
+        aliases={"doctor": "check"},
+    ),
+    provider_patches=(ProviderPatch("my-cloud", MyProductProvider),),
+    builtin_channels=(
+        BuiltinChannelSpec(
+            key="workchat",
+            factory=WorkChatChannel,
+            config_model=WorkChatConfig,
+            default_enabled=True,
+            display_name="WorkChat",
+            metadata={"owner": "my-product"},
+        ),
+    ),
+)
+```
+
+`load_extensions()` 会自动识别 entry point 返回的 `ExtensionSpec` 或 `ExtensionSpec` 列表，并应用到同一个 `ExtensionRegistry`。
+
 ## 测试扩展包
 
 业务扩展包建议使用独立 registry 做单元测试：
@@ -432,13 +526,14 @@ def test_runtime_with_scoped_registry():
 | 工作目录、配置路径 | `ProductSpec.*_dir` / `*_EXTENSION_CONFIG` |
 | Agent 人设 | `ProductSpec.agent_prompt_files` |
 | Skill CLI 名称 | `ProductSpec.skill_cli_name` |
+| Skill 生命周期 | `ExtensionAdapters.skill_service` / `skill_pool_service` |
 | 日志名称、路径、格式 | `LoggingSpec` / manifest `logging` |
 | 环境变量名称 | `ProductSpec.env_prefixes` / `EnvResolver` |
 | click 命令增删改 | `registry.cli` / `ExtensionAdapters.cli_*` |
+| Control command 增删 | `ExtensionAdapters.control_command` / `unregister_control_command` |
 | 内置 channel 增删改 | `BuiltinChannelSpec` / `ExtensionAdapters.builtin_channel` |
 | 禁用原功能 | `FeaturePolicy.disabled_features` / manifest `features` |
 | LLM Provider 增删改 | `registry.providers` / `ExtensionAdapters.provider` |
 | 插件增删改 | `PluginPolicy` / `PluginApi.extensions` |
 | FastAPI 路由和生命周期 | `registry.app` / `ExtensionAdapters.router/startup_hook` |
 | 整体替换前端 | `ProductSpec.console_static_dir` |
-

@@ -131,16 +131,29 @@ def _acquire_file_lock(handle: BinaryIO, lock_path: Path) -> None:
 
 
 def _raise_restore_lock_timeout(lock_path: Path) -> None:
+    env_name = _restore_lock_timeout_env_name()
     raise TimeoutError(
         "Timed out waiting to acquire restore lock after "
         f"{_restore_lock_timeout_seconds():g}s: {lock_path}. "
         "Another restore or startup cleanup may still be running; "
-        f"set {_LOCK_TIMEOUT_SECONDS_ENV} to wait longer.",
+        f"set {env_name} to wait longer.",
+    )
+
+
+def _restore_lock_timeout_env_name() -> str:
+    from ...extensions import EnvResolver, get_extension_registry
+
+    return EnvResolver(get_extension_registry().product).key(
+        _LOCK_TIMEOUT_SECONDS_ENV,
     )
 
 
 def _restore_lock_timeout_seconds() -> float:
-    raw = os.environ.get(_LOCK_TIMEOUT_SECONDS_ENV)
+    from ...extensions import EnvResolver, get_extension_registry
+
+    raw = EnvResolver(get_extension_registry().product).get(
+        _LOCK_TIMEOUT_SECONDS_ENV,
+    )
     if not raw:
         return _LOCK_TIMEOUT_SECONDS
     try:

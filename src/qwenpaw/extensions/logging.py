@@ -6,6 +6,7 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
+from qwenpaw.extensions.env import EnvResolver
 from qwenpaw.extensions.registry import get_extension_registry
 from qwenpaw.extensions.specs import LoggingSpec
 
@@ -51,3 +52,9 @@ def resolve_logging_spec() -> ResolvedLoggingSpec:
         level=spec.level,
         handler_factory=spec.handler_factory,
     )
+
+
+def resolve_log_level(default: str = "info") -> str:
+    """Resolve runtime log level using product env prefixes with fallback."""
+    value = EnvResolver(get_extension_registry().product).get("LOG_LEVEL")
+    return value if value is not None and value.strip() else default

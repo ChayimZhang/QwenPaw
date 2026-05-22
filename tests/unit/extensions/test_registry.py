@@ -1,10 +1,17 @@
 from pathlib import Path
 
 from qwenpaw.extensions import (
+    AppPatch,
+    BuiltinChannelSpec,
+    CliCommandPatch,
+    CliPatch,
+    ExtensionSpec,
     ExtensionRegistry,
     FeaturePolicy,
+    LoggingSpec,
     PluginPolicy,
     ProductSpec,
+    ProviderPatch,
     get_extension_registry,
     use_extension_registry,
 )
@@ -125,3 +132,96 @@ def test_registry_context_fixture(extension_registry):
     extension_registry.configure_product(ProductSpec(product_name="FixtureProduct"))
 
     assert get_extension_registry().product.product_name == "FixtureProduct"
+
+
+class SpecProvider:
+    pass
+
+
+class SpecChannel:
+    pass
+
+
+def test_registry_apply_extension_spec_wires_all_surfaces(tmp_path):
+    registry = ExtensionRegistry()
+    router = object()
+    startup_hook = object()
+    shutdown_hook = object()
+    middleware_hook = object()
+
+    spec = ExtensionSpec(
+        name="my_product",
+        product=ProductSpec(
+            product_name="MyProduct",
+            cli_name="myproduct",
+            env_prefixes=("MYPRODUCT", "QWENPAW", "COPAW"),
+            working_dir=tmp_path / "work",
+        ),
+        logging=LoggingSpec(namespace="myproduct", file_path=tmp_path / "runtime.log"),
+        features=FeaturePolicy(
+            disabled_features={"builtin_qa_agent"},
+            disabled_channels={"wechat"},
+            disabled_providers={"openrouter"},
+        ),
+        plugin_policy=PluginPolicy(
+            disabled_plugins={"qwenpaw-pet"},
+            extra_search_paths=(tmp_path / "plugins",),
+        ),
+        cli_patch=CliPatch(
+            add={
+                "diagnose": CliCommandPatch(
+                    name="diagnose",
+                    module="my_product.cli",
+                    attribute="diagnose",
+                )
+            },
+            replace={
+                "doctor": CliCommandPatch(
+                    name="doctor",
+                    module="my_product.cli",
+                    attribute="doctor",
+                )
+            },
+            disable=frozenset({"desktop"}),
+            aliases={"doctor": "check"},
+        ),
+        app_patch=AppPatch(
+            routers=(router,),
+            startup_hooks=(startup_hook,),
+            shutdown_hooks=(shutdown_hook,),
+            middleware_hooks=(middleware_hook,),
+        ),
+        provider_patches=(ProviderPatch("spec-provider", SpecProvider),),
+        builtin_channels=(
+            BuiltinChannelSpec(key="spec-channel", factory=SpecChannel),
+        ),
+    )
+
+    registry.apply_spec(spec)
+
+    assert registry.extensions["my_product"] is spec
+    assert registry.product.product_name == "MyProduct"
+    assert registry.logging.namespace == "myproduct"
+    assert registry.features.is_feature_enabled("builtin_qa_agent") is False
+    assert registry.features.is_channel_enabled("wechat") is False
+    assert registry.features.is_provider_enabled("openrouter") is False
+    assert registry.features.is_plugin_enabled("qwenpaw-pet") is False
+    assert registry.plugins.extra_search_paths == (tmp_path / "plugins",)
+    assert registry.cli.added["diagnose"] == (
+        "my_product.cli",
+        "diagnose",
+        ".diagnose",
+    )
+    assert registry.cli.replaced["doctor"] == (
+        "my_product.cli",
+        "doctor",
+        ".doctor",
+    )
+    assert "desktop" in registry.cli.disabled
+    assert registry.cli.aliases["check"] == "doctor"
+    assert registry.app.routers[0].router is router
+    assert registry.app.startup_hooks == [startup_hook]
+    assert registry.app.shutdown_hooks == [shutdown_hook]
+    assert registry.app.middleware_hooks == [middleware_hook]
+    assert registry.providers.added["spec-provider"] is SpecProvider
+    assert registry.channels.builtin_specs["spec-channel"].factory is SpecChannel

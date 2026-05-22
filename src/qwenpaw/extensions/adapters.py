@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -88,3 +89,58 @@ class ExtensionAdapters:
 
     def plugin_search_path(self, path: str | Path) -> None:
         self.registry.configure_plugins(PluginPolicy(extra_search_paths=(path,)))
+
+    def agent_prompt_files(self, *paths: str | Path) -> None:
+        self.registry.configure_product(
+            replace(self.registry.product, agent_prompt_files=tuple(paths))
+        )
+
+    def skill_service(self, workspace_dir: str | Path):
+        from qwenpaw.agents.skill_system.workspace_service import SkillService
+
+        return SkillService(Path(workspace_dir))
+
+    def skill_pool_service(self):
+        from qwenpaw.agents.skill_system.pool_service import SkillPoolService
+
+        return SkillPoolService()
+
+    def control_command(
+        self,
+        handler: Any,
+        *,
+        priority: str | None = None,
+        priority_level: int | None = None,
+        priority_registry: Any | None = None,
+    ) -> None:
+        from qwenpaw.app.runner.control_commands import register_command
+
+        register_command(handler)
+        if priority_registry is not None and (
+            priority is not None or priority_level is not None
+        ):
+            command_name = str(handler.command_name)
+            command_prefix = (
+                command_name if command_name.startswith("/") else f"/{command_name}"
+            )
+            priority_registry.register_command(
+                command_prefix,
+                priority=priority,
+                priority_level=priority_level,
+            )
+
+    def unregister_control_command(
+        self,
+        command_name: str,
+        *,
+        priority_registry: Any | None = None,
+    ) -> bool:
+        from qwenpaw.app.runner.control_commands import unregister_command
+
+        removed = unregister_command(command_name)
+        if priority_registry is not None:
+            command_prefix = (
+                command_name if command_name.startswith("/") else f"/{command_name}"
+            )
+            priority_registry.unregister_command(command_prefix)
+        return removed

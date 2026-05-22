@@ -61,3 +61,31 @@ def test_env_resolver_lists_candidate_names():
         "QWENPAW_WORKING_DIR",
         "COPAW_WORKING_DIR",
     )
+
+
+def test_all_known_qwenpaw_env_suffixes_support_downstream_prefix(monkeypatch):
+    suffixes = [
+        "WORKING_DIR",
+        "SECRET_DIR",
+        "CONSOLE_STATIC_DIR",
+        "AUTH_ENABLED",
+        "AUTH_PASSWORD",
+        "CORS_ORIGINS",
+        "OPENAPI_DOCS",
+        "BROWSER_USE_DEFAULT",
+        "TOOL_GUARD_ENABLED",
+        "SKILL_SCAN_MODE",
+        "SKILLS_HUB_BASE_URL",
+        "LLM_MAX_RETRIES",
+        "LOG_LEVEL",
+        "BACKUP_DIR",
+        "RESTORE_LOCK_TIMEOUT_SECONDS",
+        "SKILL_CONFIG_POLICY_CHECK",
+    ]
+    resolver = EnvResolver(
+        ProductSpec(env_prefixes=("MYPRODUCT", "QWENPAW", "COPAW"))
+    )
+    for suffix in suffixes:
+        monkeypatch.setenv(f"MYPRODUCT_{suffix}", f"business-{suffix}")
+        monkeypatch.setenv(f"QWENPAW_{suffix}", f"qwenpaw-{suffix}")
+        assert resolver.get(suffix) == f"business-{suffix}"

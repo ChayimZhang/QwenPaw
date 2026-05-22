@@ -7,7 +7,7 @@ from qwenpaw.extensions import (
     ProductSpec,
     use_extension_registry,
 )
-from qwenpaw.extensions.logging import resolve_logging_spec
+from qwenpaw.extensions.logging import resolve_log_level, resolve_logging_spec
 
 
 def test_resolve_logging_spec_uses_product_namespace(tmp_path):
@@ -39,6 +39,29 @@ def test_configured_logging_spec_wins(tmp_path):
     assert spec.file_path == tmp_path / "business.log"
     assert spec.format == "%(levelname)s:%(message)s"
     assert spec.level == "DEBUG"
+
+
+def test_resolve_log_level_prefers_product_env_prefix(monkeypatch):
+    registry = ExtensionRegistry()
+    registry.configure_product(
+        ProductSpec(env_prefixes=("MYPRODUCT", "QWENPAW", "COPAW"))
+    )
+    monkeypatch.setenv("MYPRODUCT_LOG_LEVEL", "debug")
+    monkeypatch.setenv("QWENPAW_LOG_LEVEL", "warning")
+
+    with use_extension_registry(registry):
+        assert resolve_log_level() == "debug"
+
+
+def test_resolve_log_level_falls_back_to_qwenpaw_env(monkeypatch):
+    registry = ExtensionRegistry()
+    registry.configure_product(
+        ProductSpec(env_prefixes=("MYPRODUCT", "QWENPAW", "COPAW"))
+    )
+    monkeypatch.setenv("QWENPAW_LOG_LEVEL", "warning")
+
+    with use_extension_registry(registry):
+        assert resolve_log_level() == "warning"
 
 
 def test_handler_factory_is_used(tmp_path):

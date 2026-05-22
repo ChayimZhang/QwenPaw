@@ -1,4 +1,4 @@
-from qwenpaw.extensions import ExtensionRegistry, ProductSpec, load_extensions
+from qwenpaw.extensions import ExtensionRegistry, ExtensionSpec, ProductSpec, load_extensions
 
 
 class _EntryPointStub:
@@ -25,6 +25,26 @@ def test_load_extensions_from_entry_point(monkeypatch):
 
     load_extensions(registry=registry)
 
+    assert registry.product.product_name == "MyProduct"
+
+
+def test_load_extensions_applies_entry_point_extension_spec(monkeypatch):
+    registry = ExtensionRegistry()
+    spec = ExtensionSpec(
+        name="my_product",
+        product=ProductSpec(product_name="MyProduct", cli_name="myproduct"),
+    )
+    entry_point = _EntryPointStub(spec)
+    monkeypatch.setattr(
+        "qwenpaw.extensions.loader.entry_points",
+        lambda group=None: [entry_point]
+        if group == "qwenpaw.extensions"
+        else [],
+    )
+
+    load_extensions(registry=registry)
+
+    assert registry.extensions["my_product"] is spec
     assert registry.product.product_name == "MyProduct"
 
 
@@ -114,6 +134,28 @@ product:
     load_extensions(registry=registry, include_entry_points=False)
 
     assert registry.product.product_name == "MyProduct"
+
+
+def test_load_extensions_bootstrap_discovers_business_prefixed_config(
+    tmp_path,
+    monkeypatch,
+):
+    manifest = tmp_path / "extension.yaml"
+    manifest.write_text(
+        """
+product:
+  name: MyProduct
+  env_prefixes: [MYPRODUCT, QWENPAW, COPAW]
+""".strip(),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MYPRODUCT_EXTENSION_CONFIG", str(manifest))
+    registry = ExtensionRegistry()
+
+    load_extensions(registry=registry, include_entry_points=False)
+
+    assert registry.product.product_name == "MyProduct"
+    assert registry.product.env_prefixes == ("MYPRODUCT", "QWENPAW", "COPAW")
 
 
 def test_load_extensions_is_idempotent(monkeypatch):

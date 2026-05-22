@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import logging
-import os
 import time
 
 _bootstrap_err: Exception | None = None
@@ -15,15 +14,15 @@ except Exception as exc:
     _bootstrap_err = exc
 
 try:
-    from .constant import LOG_LEVEL_ENV
+    from .extensions.logging import resolve_log_level
 except Exception:
-    # Fallback before we can safely read canonical constant definitions.
-    LOG_LEVEL_ENV = "QWENPAW_LOG_LEVEL"
+    def resolve_log_level(default: str = "info") -> str:
+        return default
 
 from .utils.logging import setup_logger
 
 _t0 = time.perf_counter()
-setup_logger(os.environ.get(LOG_LEVEL_ENV, "info"))
+setup_logger(resolve_log_level("info"))
 if _bootstrap_err is not None:
     logging.getLogger(__name__).warning(
         "qwenpaw: failed to load persisted envs on init: %s",

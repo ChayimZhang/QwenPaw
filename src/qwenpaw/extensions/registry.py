@@ -8,10 +8,14 @@ from pathlib import Path
 from typing import Iterator
 
 from qwenpaw.extensions.specs import (
+    AppPatch,
+    CliPatch,
+    ExtensionSpec,
     FeaturePolicy,
     LoggingSpec,
     PluginPolicy,
     ProductSpec,
+    ProviderPatch,
 )
 
 
@@ -66,6 +70,24 @@ class ExtensionRegistry:
             )
         )
 
+    def apply_spec(self, spec: ExtensionSpec) -> None:
+        """Apply a declarative extension spec to all extension surfaces."""
+        self.extensions[spec.name] = spec
+
+        if spec.product is not None:
+            self.configure_product(spec.product)
+        if spec.logging is not None:
+            self.configure_logging(spec.logging)
+
+        self.configure_features(spec.features)
+        self.configure_plugins(spec.plugin_policy)
+        self._apply_cli_patch(spec.cli_patch)
+        self._apply_app_patch(spec.app_patch)
+        for patch in spec.provider_patches:
+            self._apply_provider_patch(patch)
+        for channel in spec.builtin_channels:
+            self.channels.register_builtin(channel)
+
     def extension(self, name: str) -> "ExtensionBuilder":
         if not name:
             raise ValueError("extension name is required")
@@ -77,6 +99,36 @@ class ExtensionRegistry:
         from qwenpaw.extensions.adapters import ExtensionAdapters
 
         return ExtensionAdapters(self)
+
+    def _apply_cli_patch(self, patch: CliPatch) -> None:
+        for name, command in patch.add.items():
+            self.cli.add_command(name, command.module, command.attribute)
+        for name, command in patch.replace.items():
+            self.cli.replace_command(name, command.module, command.attribute)
+        for name in patch.disable:
+            self.cli.disable_command(name)
+        for existing, alias in patch.aliases.items():
+            self.cli.alias_command(existing, alias)
+
+    def _apply_app_patch(self, patch: AppPatch) -> None:
+        for router in patch.routers:
+            self.app.add_router(router)
+        for hook in patch.startup_hooks:
+            self.app.add_startup_hook(hook)
+        for hook in patch.shutdown_hooks:
+            self.app.add_shutdown_hook(hook)
+        for hook in patch.middleware_hooks:
+            self.app.add_middleware_hook(hook)
+        for hook in patch.before_include_routers:
+            self.app.add_before_include_routers_hook(hook)
+        for hook in patch.after_include_routers:
+            self.app.add_after_include_routers_hook(hook)
+
+    def _apply_provider_patch(self, patch: ProviderPatch) -> None:
+        if patch.replace:
+            self.providers.replace_provider(patch.provider_id, patch.provider_cls)
+        else:
+            self.providers.register_provider(patch.provider_id, patch.provider_cls)
 
 
 class ExtensionBuilder:

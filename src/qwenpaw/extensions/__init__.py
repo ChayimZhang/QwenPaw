@@ -16,7 +16,7 @@ from qwenpaw.extensions.features import (
     should_load_plugin,
 )
 from qwenpaw.extensions.loader import load_extensions
-from qwenpaw.extensions.logging import resolve_logging_spec
+from qwenpaw.extensions.logging import resolve_log_level, resolve_logging_spec
 from qwenpaw.extensions.providers import ProviderExtensionRegistry
 from qwenpaw.extensions.specs import (
     AppPatch,
@@ -62,6 +62,7 @@ __all__ = [
     "get_extension_registry",
     "iter_plugin_search_paths",
     "load_extensions",
+    "resolve_log_level",
     "resolve_logging_spec",
     "should_create_builtin_qa_agent",
     "should_load_plugin",

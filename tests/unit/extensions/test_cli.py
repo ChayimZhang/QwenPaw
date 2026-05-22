@@ -65,7 +65,13 @@ def test_root_click_uses_product_name_for_help(monkeypatch):
 
 def test_root_click_uses_product_name_for_version():
     registry = ExtensionRegistry()
-    registry.configure_product(ProductSpec(product_name="MyProduct", cli_name="myproduct"))
+    registry.configure_product(
+        ProductSpec(
+            product_name="MyProduct",
+            product_version="9.9.9",
+            cli_name="myproduct",
+        )
+    )
 
     import qwenpaw.cli.main as cli_main
     try:
@@ -75,6 +81,7 @@ def test_root_click_uses_product_name_for_version():
 
         assert result.exit_code == 0
         assert "MyProduct" in result.output
+        assert "9.9.9" in result.output
     finally:
         with use_extension_registry(ExtensionRegistry()):
             importlib.reload(cli_main)

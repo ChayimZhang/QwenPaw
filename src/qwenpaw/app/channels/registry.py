@@ -125,6 +125,13 @@ def get_builtin_channel_keys() -> frozenset[str]:
     return frozenset(get_extension_registry().channels.builtin_specs)
 
 
+def get_builtin_channel_specs() -> dict[str, BuiltinChannelSpec]:
+    """Return enabled extension-aware built-in channel specs."""
+    _register_default_builtin_channel_specs()
+    extension_registry = get_extension_registry()
+    return dict(extension_registry.channels.apply_policy(extension_registry.features))
+
+
 def _get_cached_builtin_channels() -> dict[str, type[BaseChannel]]:
     """Return cached built-in channels (loaded once per process)."""
     global _BUILTIN_CHANNEL_CACHE

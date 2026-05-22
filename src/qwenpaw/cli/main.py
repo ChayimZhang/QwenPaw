@@ -165,7 +165,7 @@ def _extension_lazy_subcommands():
     lazy_subcommands=_extension_lazy_subcommands(),
 )
 @click.version_option(
-    version=__version__,
+    version=_EXTENSION_REGISTRY.product.product_version or __version__,
     prog_name=_EXTENSION_REGISTRY.product.product_name,
 )
 @click.option("--host", default=None, help="API Host")

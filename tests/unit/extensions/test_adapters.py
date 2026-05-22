@@ -1,5 +1,11 @@
 from fastapi import APIRouter
 
+from qwenpaw.app.channels.command_registry import CommandRegistry
+from qwenpaw.app.runner.control_commands import (
+    BaseControlCommandHandler,
+    is_control_command,
+    unregister_command,
+)
 from qwenpaw.extensions import BuiltinChannelSpec, ExtensionRegistry
 from qwenpaw.extensions.adapters import ExtensionAdapters
 from qwenpaw.plugins.api import PluginApi
@@ -57,3 +63,34 @@ def test_registry_and_plugin_api_expose_adapters():
 
     assert isinstance(registry.adapters, ExtensionAdapters)
     assert isinstance(api.extensions, ExtensionAdapters)
+
+
+class ExampleControlCommand(BaseControlCommandHandler):
+    command_name = "/example"
+
+    async def handle(self, context):
+        return "ok"
+
+
+def test_adapters_expose_skill_control_and_agent_template_helpers(tmp_path):
+    registry = ExtensionRegistry()
+    adapters = ExtensionAdapters(registry)
+    priority_registry = CommandRegistry()
+
+    try:
+        adapters.agent_prompt_files("MY_PRODUCT.md", "AGENTS.md")
+        skill_service = adapters.skill_service(tmp_path / "workspace")
+        pool_service = adapters.skill_pool_service()
+        adapters.control_command(
+            ExampleControlCommand(),
+            priority="high",
+            priority_registry=priority_registry,
+        )
+
+        assert registry.product.agent_prompt_files == ("MY_PRODUCT.md", "AGENTS.md")
+        assert skill_service.workspace_dir == tmp_path / "workspace"
+        assert pool_service is not None
+        assert is_control_command("/example now") is True
+        assert priority_registry.get_priority_level("/example now") == 10
+    finally:
+        unregister_command("/example")

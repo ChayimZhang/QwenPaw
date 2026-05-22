@@ -69,6 +69,7 @@ def test_registered_builtin_channel_is_visible_to_runtime_registry(
     from qwenpaw.app.channels.registry import (
         BUILTIN_CHANNEL_KEYS,
         clear_builtin_channel_cache,
+        get_builtin_channel_specs,
         get_channel_registry,
     )
 
@@ -83,11 +84,38 @@ def test_registered_builtin_channel_is_visible_to_runtime_registry(
 
     try:
         registry = get_channel_registry()
+        specs = get_builtin_channel_specs()
 
         assert registry["product_builtin"] is ProductBuiltinChannel
         assert "product_builtin" in BUILTIN_CHANNEL_KEYS
+        assert specs["product_builtin"].display_name == "Product Builtin"
     finally:
         clear_builtin_channel_cache()
+
+
+def test_builtin_channel_spec_preserves_metadata_for_runtime(extension_registry):
+    from qwenpaw.app.channels.registry import get_builtin_channel_specs
+
+    class ProductChannelConfig:
+        pass
+
+    extension_registry.channels.register_builtin(
+        BuiltinChannelSpec(
+            key="product_builtin",
+            factory=ProductBuiltinChannel,
+            config_model=ProductChannelConfig,
+            default_enabled=True,
+            display_name="Product Builtin",
+            metadata={"category": "business"},
+        )
+    )
+
+    spec = get_builtin_channel_specs()["product_builtin"]
+
+    assert spec.config_model is ProductChannelConfig
+    assert spec.default_enabled is True
+    assert spec.display_name == "Product Builtin"
+    assert spec.metadata == {"category": "business"}
 
 
 def test_custom_channel_sources_include_extension_directories(

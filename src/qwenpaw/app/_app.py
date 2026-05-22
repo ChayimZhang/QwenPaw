@@ -23,13 +23,13 @@ from ..config import load_config  # pylint: disable=no-name-in-module
 from ..config.utils import get_config_path
 from ..constant import (
     DOCS_ENABLED,
-    LOG_LEVEL_ENV,
     CORS_ORIGINS,
     WORKING_DIR,
     PROJECT_NAME,
     PROJECT_VERSION,
 )
 from ..extensions import get_extension_registry
+from ..extensions.logging import resolve_log_level
 from ..__version__ import __version__
 from ..backup._utils.safe_swap import cleanup_startup_restore_artifacts
 from ..utils.logging import (
@@ -56,9 +56,9 @@ from .migration import (
 from .channels.registry import register_custom_channel_routes
 from ..utils.console_static import resolve_console_static_dir
 
-# Apply log level on load so reload child process gets same level as CLI.
-logger = setup_logger(os.environ.get(LOG_LEVEL_ENV, "info"))
 _EXTENSION_REGISTRY = get_extension_registry()
+# Apply log level on load so reload child process gets same level as CLI.
+logger = setup_logger(resolve_log_level("info"))
 
 # Ensure static assets are served with browser-compatible MIME types across
 # platforms (notably Windows may miss .js/.mjs mappings).
