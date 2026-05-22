@@ -272,6 +272,7 @@
     "backup": "Backup e Restauracao",
     "cli": "CLI",
     "plugins": "Sistema de Plugins",
+    "extensionSdk": "SDK de Extensoes",
     "faq": "FAQ",
     "apiTutorial": "API RESTful",
     "community": "Relatorios de bugs e comunidade",

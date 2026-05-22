@@ -276,6 +276,7 @@
     "backup": "备份与恢复",
     "cli": "CLI",
     "plugins": "插件系统",
+    "extensionSdk": "扩展 SDK",
     "faq": "常见问题",
     "apiTutorial": "RESTful API 接口",
     "community": "问题反馈与交流",
