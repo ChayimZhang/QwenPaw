@@ -27,6 +27,7 @@ from ..constant import (
     CORS_ORIGINS,
     WORKING_DIR,
     PROJECT_NAME,
+    PROJECT_VERSION,
 )
 from ..extensions import get_extension_registry
 from ..__version__ import __version__
@@ -632,6 +633,8 @@ def get_version():
     """Return the current application version (public-safe payload)."""
     return {
         "version": __version__,
+        "product": PROJECT_NAME,
+        "product_version": PROJECT_VERSION,
     }
 
 

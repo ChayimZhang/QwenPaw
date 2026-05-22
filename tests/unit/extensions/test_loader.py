@@ -41,6 +41,14 @@ product:
   working_dir: ~/.myproduct
   secret_dir: ~/.myproduct.secret
   console_static_dir: /opt/myproduct/console
+  agent_prompt_files:
+    - MY_PRODUCT.md
+    - AGENTS.md
+logging:
+  namespace: myproduct
+  file_path: /var/log/myproduct/runtime.log
+  format: "%(levelname)s %(message)s"
+  level: DEBUG
 features:
   disabled_features:
     - builtin_qa_agent
@@ -64,6 +72,13 @@ plugins:
     assert registry.product.module_alias == "my_product"
     assert registry.product.cli_name == "myproduct"
     assert registry.product.env_prefixes == ("MYPRODUCT", "QWENPAW", "COPAW")
+    assert registry.product.agent_prompt_files == ("MY_PRODUCT.md", "AGENTS.md")
+    assert registry.logging.namespace == "myproduct"
+    assert registry.logging.file_path.as_posix().endswith(
+        "/var/log/myproduct/runtime.log"
+    )
+    assert registry.logging.format == "%(levelname)s %(message)s"
+    assert registry.logging.level == "DEBUG"
     assert registry.features.is_feature_enabled("builtin_qa_agent") is False
     assert registry.features.is_channel_enabled("wechat") is False
     assert registry.plugins.extra_search_paths[0].as_posix().endswith(

@@ -7,12 +7,18 @@ from pathlib import Path
 import yaml
 
 from qwenpaw.extensions.registry import ExtensionRegistry
-from qwenpaw.extensions.specs import FeaturePolicy, PluginPolicy, ProductSpec
+from qwenpaw.extensions.specs import (
+    FeaturePolicy,
+    LoggingSpec,
+    PluginPolicy,
+    ProductSpec,
+)
 
 
 def apply_manifest(registry: ExtensionRegistry, path: str | Path) -> None:
     data = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
     product = data.get("product") or {}
+    logging = data.get("logging") or {}
     features = data.get("features") or {}
     plugins = data.get("plugins") or {}
 
@@ -33,6 +39,22 @@ def apply_manifest(registry: ExtensionRegistry, path: str | Path) -> None:
                 media_dir=product.get("media_dir"),
                 local_provider_dir=product.get("local_provider_dir"),
                 console_static_dir=product.get("console_static_dir"),
+                agent_prompt_files=tuple(
+                    product.get(
+                        "agent_prompt_files",
+                        ("AGENTS.md", "SOUL.md", "PROFILE.md"),
+                    )
+                ),
+            )
+        )
+
+    if logging:
+        registry.configure_logging(
+            LoggingSpec(
+                namespace=logging.get("namespace", registry.logging.namespace),
+                file_path=logging.get("file_path", registry.logging.file_path),
+                format=logging.get("format", registry.logging.format),
+                level=logging.get("level", registry.logging.level),
             )
         )
 

@@ -108,7 +108,9 @@ elif not _USES_DEFAULT_PRODUCT:
 else:
     SECRET_DIR = Path(f"{WORKING_DIR}.secret").expanduser().resolve()
 
+MODULE_NAME = _PRODUCT.module_alias
 PROJECT_NAME = _PRODUCT.product_name
+PROJECT_VERSION = _PRODUCT.product_version
 
 
 def _resolve_docs_dir() -> Path | None:

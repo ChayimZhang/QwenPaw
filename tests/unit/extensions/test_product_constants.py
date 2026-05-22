@@ -22,16 +22,20 @@ def test_constant_uses_extension_product_paths(tmp_path):
     registry.configure_product(
         ProductSpec(
             product_name="MyProduct",
+            product_version="2.0.0",
+            module_alias="my_product",
             env_prefixes=("MYPRODUCT", "QWENPAW", "COPAW"),
             working_dir=tmp_path / "work",
             secret_dir=tmp_path / "secret",
         )
-    )
+        )
 
     try:
         constant = _reload_constant_with(registry)
 
+        assert constant.MODULE_NAME == "my_product"
         assert constant.PROJECT_NAME == "MyProduct"
+        assert constant.PROJECT_VERSION == "2.0.0"
         assert constant.WORKING_DIR == tmp_path / "work"
         assert constant.SECRET_DIR == tmp_path / "secret"
         assert constant.CUSTOM_CHANNELS_DIR == tmp_path / "work" / "custom_channels"
