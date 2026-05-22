@@ -2,6 +2,7 @@
 
 from qwenpaw.extensions.cli import CliRegistry
 from qwenpaw.extensions.env import EnvResolver
+from qwenpaw.extensions.app import AppExtensionRegistry, RouterRegistration
 from qwenpaw.extensions.loader import load_extensions
 from qwenpaw.extensions.logging import resolve_logging_spec
 from qwenpaw.extensions.specs import (
@@ -24,6 +25,7 @@ from qwenpaw.extensions.registry import (
 
 __all__ = [
     "AppPatch",
+    "AppExtensionRegistry",
     "BuiltinChannelSpec",
     "CliCommandPatch",
     "CliPatch",
@@ -36,6 +38,7 @@ __all__ = [
     "PluginPolicy",
     "ProductSpec",
     "ProviderPatch",
+    "RouterRegistration",
     "get_extension_registry",
     "load_extensions",
     "resolve_logging_spec",

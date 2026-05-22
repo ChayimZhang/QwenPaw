@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from ..constant import EnvVarLoader
+from ..extensions.app import resolve_console_static_dir as resolve_extension_console_static_dir
 
 # Primary env key (``COPAW_CONSOLE_STATIC_DIR`` is accepted as a legacy
 # fallback via :class:`~qwenpaw.constant.EnvVarLoader`).
@@ -18,6 +19,10 @@ def resolve_console_static_dir() -> str:
     Resolution order matches :mod:`qwenpaw.app._app`: env override, package
     ``qwenpaw/console``, repo ``console/dist``, then cwd fallbacks.
     """
+    extension_static_dir = resolve_extension_console_static_dir()
+    if extension_static_dir is not None:
+        return str(extension_static_dir)
+
     static_dir = EnvVarLoader.get_str("QWENPAW_CONSOLE_STATIC_DIR")
     if static_dir:
         return static_dir
