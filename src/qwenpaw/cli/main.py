@@ -150,13 +150,19 @@ _DEFAULT_LAZY_SUBCOMMANDS = {
 }
 
 
+def _extension_lazy_subcommands():
+    commands = dict(_DEFAULT_LAZY_SUBCOMMANDS)
+    skill_cli_name = _EXTENSION_REGISTRY.product.skill_cli_name
+    if skill_cli_name and "skills" in commands:
+        commands.setdefault(skill_cli_name, commands["skills"])
+    return _EXTENSION_REGISTRY.cli.build_lazy_subcommands(commands)
+
+
 @click.group(
     cls=LazyGroup,
     name=_EXTENSION_REGISTRY.product.cli_name,
     context_settings={"help_option_names": ["-h", "--help"]},
-    lazy_subcommands=_EXTENSION_REGISTRY.cli.build_lazy_subcommands(
-        _DEFAULT_LAZY_SUBCOMMANDS,
-    ),
+    lazy_subcommands=_extension_lazy_subcommands(),
 )
 @click.version_option(
     version=__version__,

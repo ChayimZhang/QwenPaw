@@ -78,3 +78,24 @@ def test_root_click_uses_product_name_for_version():
     finally:
         with use_extension_registry(ExtensionRegistry()):
             importlib.reload(cli_main)
+
+
+def test_root_click_adds_product_skill_cli_alias():
+    registry = ExtensionRegistry()
+    registry.configure_product(
+        ProductSpec(
+            product_name="MyProduct",
+            skill_cli_name="abilities",
+        )
+    )
+
+    import qwenpaw.cli.main as cli_main
+    try:
+        with use_extension_registry(registry):
+            cli = importlib.reload(cli_main).cli
+
+        assert "abilities" in cli.lazy_subcommands
+        assert cli.lazy_subcommands["abilities"] == cli.lazy_subcommands["skills"]
+    finally:
+        with use_extension_registry(ExtensionRegistry()):
+            importlib.reload(cli_main)
