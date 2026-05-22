@@ -10,6 +10,13 @@ from fastapi import FastAPI
 
 
 @dataclass
+class RouterSpec:
+    router: Any
+    prefix: str = ""
+    tags: list[str] | None = None
+
+
+@dataclass
 class RouterRegistration:
     router: Any
     prefix: str = ""
@@ -53,6 +60,10 @@ class AppExtensionRegistry:
             hook(app)
 
     def apply_routers(self, app: FastAPI) -> None:
+        from qwenpaw.extensions.features import should_include_extension_routers
+
+        if not should_include_extension_routers():
+            return
         for item in self.routers:
             app.include_router(item.router, prefix=item.prefix, tags=item.tags)
 

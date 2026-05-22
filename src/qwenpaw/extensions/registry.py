@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Iterator
 
 from qwenpaw.extensions.specs import (
     AppPatch,
@@ -111,8 +111,9 @@ class ExtensionRegistry:
             self.cli.alias_command(existing, alias)
 
     def _apply_app_patch(self, patch: AppPatch) -> None:
-        for router in patch.routers:
-            self.app.add_router(router)
+        for item in patch.routers:
+            router, prefix, tags = _normalize_router_patch(item)
+            self.app.add_router(router, prefix=prefix, tags=tags)
         for hook in patch.startup_hooks:
             self.app.add_startup_hook(hook)
         for hook in patch.shutdown_hooks:
@@ -131,23 +132,65 @@ class ExtensionRegistry:
             self.providers.register_provider(patch.provider_id, patch.provider_cls)
 
 
+def _normalize_router_patch(item: Any) -> tuple[Any, str, list[str] | None]:
+    if hasattr(item, "router"):
+        return (
+            item.router,
+            getattr(item, "prefix", "") or "",
+            getattr(item, "tags", None),
+        )
+    if isinstance(item, tuple):
+        if len(item) == 3:
+            router, prefix, tags = item
+            return router, prefix or "", list(tags) if tags is not None else None
+        if len(item) == 2:
+            router, prefix = item
+            return router, prefix or "", None
+    return item, "", None
+
+
+def _explicit_product_path(path: Path, default: Path) -> Path | None:
+    return None if path == default else path
+
+
 class ExtensionBuilder:
     """Fluent extension configuration helper."""
 
     def __init__(self, registry: ExtensionRegistry, name: str) -> None:
         self.registry = registry
         self.name = name
+        product = registry.product
         self._product_kwargs: dict[str, object] = {
-            "product_name": registry.product.product_name,
-            "product_version": registry.product.product_version,
+            "product_name": product.product_name,
+            "product_version": product.product_version,
             "module_alias": name,
-            "cli_name": registry.product.cli_name,
-            "skill_cli_name": registry.product.skill_cli_name,
-            "env_prefixes": registry.product.env_prefixes,
-            "working_dir": registry.product.working_dir,
-            "secret_dir": registry.product.secret_dir,
-            "console_static_dir": registry.product.console_static_dir,
-            "agent_prompt_files": registry.product.agent_prompt_files,
+            "cli_name": product.cli_name,
+            "skill_cli_name": product.skill_cli_name,
+            "env_prefixes": product.env_prefixes,
+            "working_dir": product.working_dir,
+            "secret_dir": product.secret_dir,
+            "backup_dir": _explicit_product_path(
+                product.backup_dir,
+                product.working_dir / "backups",
+            ),
+            "plugins_dir": _explicit_product_path(
+                product.plugins_dir,
+                product.working_dir / "plugins",
+            ),
+            "custom_channels_dir": _explicit_product_path(
+                product.custom_channels_dir,
+                product.working_dir / "custom_channels",
+            ),
+            "media_dir": _explicit_product_path(
+                product.media_dir,
+                product.working_dir / "media",
+            ),
+            "local_provider_dir": _explicit_product_path(
+                product.local_provider_dir,
+                product.working_dir / "local_models",
+            ),
+            "console_static_dir": product.console_static_dir,
+            "agent_prompt_files": product.agent_prompt_files,
         }
 
     def product(

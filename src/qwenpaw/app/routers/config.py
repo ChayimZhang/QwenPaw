@@ -16,7 +16,11 @@ from ...config import (
     ToolGuardConfig,
     ToolGuardRuleConfig,
 )
-from ..channels.registry import BUILTIN_CHANNEL_KEYS
+from ..channels.registry import (
+    BUILTIN_CHANNEL_KEYS,
+    default_channel_config_for,
+    get_builtin_channel_spec,
+)
 from ...config.timezone import normalize_tz
 from ...config.config import (
     AgentsLLMRoutingConfig,
@@ -74,6 +78,23 @@ _ALLOWED_ACP_TOOL_PARSE_MODES = {
 }
 
 
+def _default_channel_config(channel_name: str) -> dict:
+    default = default_channel_config_for(channel_name)
+    if default is not None:
+        return default
+    return {"enabled": False, "bot_prefix": ""}
+
+
+def _validate_channel_config(channel_name: str, payload: dict):
+    spec = get_builtin_channel_spec(channel_name)
+    if spec is not None and spec.config_model is not None:
+        return spec.config_model(**payload)
+    config_class = _CHANNEL_CONFIG_CLASS_MAP.get(channel_name)
+    if config_class is not None:
+        return config_class(**payload)
+    return payload
+
+
 @router.get(
     "/channels",
     summary="List all channels",
@@ -108,7 +129,7 @@ async def list_channels(request: Request) -> dict:
             )
         else:
             # Channel registered but no config saved yet, use empty default
-            channel_data = {"enabled": False, "bot_prefix": ""}
+            channel_data = _default_channel_config(key)
         if isinstance(channel_data, dict):
             channel_data["isBuiltin"] = key in BUILTIN_CHANNEL_KEYS
         result[key] = channel_data
@@ -374,12 +395,7 @@ async def put_channel(
     if agent.config.channels is None:
         agent.config.channels = ChannelConfig()
 
-    config_class = _CHANNEL_CONFIG_CLASS_MAP.get(channel_name)
-    if config_class is not None:
-        channel_config = config_class(**single_channel_config)
-    else:
-        # For custom channels, just use the dict
-        channel_config = single_channel_config
+    channel_config = _validate_channel_config(channel_name, single_channel_config)
 
     # Set channel config in agent's config
     setattr(agent.config.channels, channel_name, channel_config)

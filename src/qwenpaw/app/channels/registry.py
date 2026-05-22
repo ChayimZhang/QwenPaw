@@ -15,6 +15,7 @@ from ...extensions import (
     BuiltinChannelSpec,
     get_extension_registry,
     load_extensions,
+    should_load_custom_channels,
 )
 from .base import BaseChannel
 
@@ -132,6 +133,33 @@ def get_builtin_channel_specs() -> dict[str, BuiltinChannelSpec]:
     return dict(extension_registry.channels.apply_policy(extension_registry.features))
 
 
+def get_builtin_channel_spec(key: str) -> BuiltinChannelSpec | None:
+    return get_builtin_channel_specs().get(key)
+
+
+def default_channel_config_for(key: str):
+    spec = get_builtin_channel_spec(key)
+    if spec is None:
+        return None
+    config_model = spec.config_model
+    if config_model is not None:
+        try:
+            config = config_model()
+            if hasattr(config, "model_dump"):
+                data = config.model_dump()
+            elif hasattr(config, "__dict__"):
+                data = dict(vars(config))
+            else:
+                data = {}
+        except Exception:
+            data = {}
+    else:
+        data = {}
+    data["enabled"] = spec.default_enabled
+    data.setdefault("bot_prefix", "")
+    return data
+
+
 def _get_cached_builtin_channels() -> dict[str, type[BaseChannel]]:
     """Return cached built-in channels (loaded once per process)."""
     global _BUILTIN_CHANNEL_CACHE
@@ -163,6 +191,8 @@ def _discover_custom_channels() -> dict[str, type[BaseChannel]]:
 
 def _iter_custom_channel_dirs() -> tuple[Path, ...]:
     load_extensions()
+    if not should_load_custom_channels():
+        return ()
     paths = [
         CUSTOM_CHANNELS_DIR,
         *get_extension_registry().channels.custom_sources,

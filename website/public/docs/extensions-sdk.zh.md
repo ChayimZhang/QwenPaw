@@ -169,6 +169,16 @@ plugins:
     - /opt/myproduct/plugins
 ```
 
+内置可配置功能开关由 `EXTENSION_FEATURES` 暴露，业务可以通过 manifest 的 `features.disabled_features` 或 `FeaturePolicy.disabled_features` 禁用：
+
+| key | 含义 |
+| --- | --- |
+| `builtin_qa_agent` | 是否创建内置 QA Agent |
+| `plugins` | 是否发现并加载插件 |
+| `builtin_channels` | 是否注册非 required 的内置 channel |
+| `custom_channels` | 是否扫描 custom channel 目录 |
+| `fastapi_extension_routers` | 是否 include 扩展注册的 FastAPI routers |
+
 ## 环境变量前缀
 
 `ProductSpec.env_prefixes` 决定所有 QwenPaw 环境变量的查找顺序。业务前缀必须放在第一位：
@@ -246,7 +256,7 @@ registry.configure_logging(LoggingSpec(handler_factory=handler_factory))
 
 ```toml
 [project.scripts]
-myproduct = "qwenpaw.cli.main:main"
+myproduct = "qwenpaw.cli.main:cli"
 ```
 
 增删改 click 子命令：

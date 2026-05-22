@@ -36,6 +36,7 @@ from ..config import get_available_channels
 from ..constant import CUSTOM_CHANNELS_DIR
 from ..app.channels.registry import (
     BUILTIN_CHANNEL_KEYS,
+    get_builtin_channel_specs,
     get_channel_registry,
 )
 
@@ -166,17 +167,18 @@ def _get_channel_names() -> dict[str, str]:
     """Return channel key -> display name (built-in + plugins)."""
     available = get_available_channels()
     registry = get_channel_registry()
+    specs = get_builtin_channel_specs()
     out = {k: v for k, v in _ALL_CHANNEL_NAMES.items() if k in available}
     for key in available:
         if key not in out and key in registry:
             cls = registry[key]
-            out[key] = (
-                getattr(cls, "display_name", None)
-                or key.replace(
-                    "_",
-                    " ",
-                ).title()
-            )
+            spec = specs.get(key)
+            display_name = getattr(spec, "display_name", None)
+            out[key] = display_name or getattr(
+                cls,
+                "display_name",
+                None,
+            ) or key.replace("_", " ").title()
     return out
 
 
@@ -725,6 +727,7 @@ def get_channel_configurators() -> dict:
     """Return channel configurators (built-in + plugin get_configurator)."""
     available = get_available_channels()
     registry = get_channel_registry()
+    specs = get_builtin_channel_specs()
     out = {
         k: v for k, v in _ALL_CHANNEL_CONFIGURATORS.items() if k in available
     }
@@ -769,13 +772,13 @@ def get_channel_configurators() -> dict:
         ch_cls = registry.get(key)
         if ch_cls is None:
             continue
-        display = (
-            getattr(ch_cls, "display_name", None)
-            or key.replace(
-                "_",
-                " ",
-            ).title()
-        )
+        spec = specs.get(key)
+        display_name = getattr(spec, "display_name", None)
+        display = display_name or getattr(
+            ch_cls,
+            "display_name",
+            None,
+        ) or key.replace("_", " ").title()
         configurator = getattr(ch_cls, "get_configurator", None)
         if callable(configurator):
             configurator = configurator()

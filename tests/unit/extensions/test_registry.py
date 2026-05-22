@@ -95,6 +95,29 @@ def test_builder_configures_paths(tmp_path):
     assert registry.product.console_static_dir == console_dir
 
 
+def test_builder_preserves_all_product_paths_across_updates(tmp_path):
+    registry = ExtensionRegistry()
+    registry.configure_product(
+        ProductSpec(
+            product_name="Base",
+            working_dir=tmp_path / "work",
+            backup_dir=tmp_path / "backup",
+            plugins_dir=tmp_path / "plugins",
+            custom_channels_dir=tmp_path / "channels",
+            media_dir=tmp_path / "media",
+            local_provider_dir=tmp_path / "models",
+        )
+    )
+
+    registry.extension("my_product").product(name="MyProduct")
+
+    assert registry.product.backup_dir == tmp_path / "backup"
+    assert registry.product.plugins_dir == tmp_path / "plugins"
+    assert registry.product.custom_channels_dir == tmp_path / "channels"
+    assert registry.product.media_dir == tmp_path / "media"
+    assert registry.product.local_provider_dir == tmp_path / "models"
+
+
 def test_configure_features_merges_disabled_sets():
     registry = ExtensionRegistry()
     registry.configure_features(FeaturePolicy(disabled_features={"builtin_qa_agent"}))
@@ -145,6 +168,7 @@ class SpecChannel:
 def test_registry_apply_extension_spec_wires_all_surfaces(tmp_path):
     registry = ExtensionRegistry()
     router = object()
+    prefixed_router = object()
     startup_hook = object()
     shutdown_hook = object()
     middleware_hook = object()
@@ -186,7 +210,7 @@ def test_registry_apply_extension_spec_wires_all_surfaces(tmp_path):
             aliases={"doctor": "check"},
         ),
         app_patch=AppPatch(
-            routers=(router,),
+            routers=(router, (prefixed_router, "/api/product", ["product"])),
             startup_hooks=(startup_hook,),
             shutdown_hooks=(shutdown_hook,),
             middleware_hooks=(middleware_hook,),
@@ -220,6 +244,9 @@ def test_registry_apply_extension_spec_wires_all_surfaces(tmp_path):
     assert "desktop" in registry.cli.disabled
     assert registry.cli.aliases["check"] == "doctor"
     assert registry.app.routers[0].router is router
+    assert registry.app.routers[1].router is prefixed_router
+    assert registry.app.routers[1].prefix == "/api/product"
+    assert registry.app.routers[1].tags == ["product"]
     assert registry.app.startup_hooks == [startup_hook]
     assert registry.app.shutdown_hooks == [shutdown_hook]
     assert registry.app.middleware_hooks == [middleware_hook]

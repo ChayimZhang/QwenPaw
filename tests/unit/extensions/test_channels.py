@@ -1,7 +1,15 @@
 from types import SimpleNamespace
 
+from pydantic import BaseModel
+
 from qwenpaw.app.channels.base import BaseChannel
-from qwenpaw.extensions import BuiltinChannelSpec, ExtensionRegistry, FeaturePolicy
+from qwenpaw.config.config import Config
+from qwenpaw.extensions import (
+    BuiltinChannelSpec,
+    ExtensionRegistry,
+    FeaturePolicy,
+    use_extension_registry,
+)
 from qwenpaw.extensions.channels import ChannelExtensionRegistry
 
 
@@ -20,6 +28,12 @@ class ProductBuiltinChannel(BaseChannel):
 
     async def send(self, to_handle: str, text: str, meta=None) -> None:
         pass
+
+
+class ProductChannelConfig(BaseModel):
+    enabled: bool = False
+    bot_prefix: str = ""
+    token: str = "default-token"
 
 
 def test_builtin_channel_registration_is_separate_from_custom_sources(tmp_path):
@@ -48,6 +62,21 @@ def test_channel_policy_filters_non_required_builtin():
 
     filtered = registry.apply_policy(
         FeaturePolicy(disabled_channels={"console", "wechat"})
+    )
+
+    assert "console" in filtered
+    assert "wechat" not in filtered
+
+
+def test_builtin_channels_feature_gate_disables_non_required_builtin():
+    registry = ChannelExtensionRegistry()
+    registry.register_builtin(
+        BuiltinChannelSpec(key="console", factory=ExampleChannel, required=True)
+    )
+    registry.register_builtin(BuiltinChannelSpec(key="wechat", factory=ExampleChannel))
+
+    filtered = registry.apply_policy(
+        FeaturePolicy(disabled_features={"builtin_channels"})
     )
 
     assert "console" in filtered
@@ -96,9 +125,6 @@ def test_registered_builtin_channel_is_visible_to_runtime_registry(
 def test_builtin_channel_spec_preserves_metadata_for_runtime(extension_registry):
     from qwenpaw.app.channels.registry import get_builtin_channel_specs
 
-    class ProductChannelConfig:
-        pass
-
     extension_registry.channels.register_builtin(
         BuiltinChannelSpec(
             key="product_builtin",
@@ -116,6 +142,92 @@ def test_builtin_channel_spec_preserves_metadata_for_runtime(extension_registry)
     assert spec.default_enabled is True
     assert spec.display_name == "Product Builtin"
     assert spec.metadata == {"category": "business"}
+
+
+def test_cli_channel_configurators_use_builtin_channel_spec_display_name(
+    extension_registry,
+):
+    from qwenpaw.cli.channels_cmd import get_channel_configurators
+
+    extension_registry.channels.register_builtin(
+        BuiltinChannelSpec(
+            key="product_builtin",
+            factory=ProductBuiltinChannel,
+            display_name="Product Builtin",
+        )
+    )
+
+    configurators = get_channel_configurators()
+
+    assert configurators["product_builtin"][0] == "Product Builtin"
+
+
+def test_config_router_uses_builtin_channel_spec_defaults_and_config_model(
+    extension_registry,
+):
+    from qwenpaw.app.routers import config as config_router
+
+    extension_registry.channels.register_builtin(
+        BuiltinChannelSpec(
+            key="product_builtin",
+            factory=ProductBuiltinChannel,
+            config_model=ProductChannelConfig,
+            default_enabled=True,
+        )
+    )
+
+    default_config = config_router._default_channel_config("product_builtin")
+    validated = config_router._validate_channel_config(
+        "product_builtin",
+        {"enabled": True, "bot_prefix": "@p", "token": "secret"},
+    )
+
+    assert default_config == {
+        "enabled": True,
+        "bot_prefix": "",
+        "token": "default-token",
+    }
+    assert isinstance(validated, ProductChannelConfig)
+    assert validated.token == "secret"
+
+
+def test_channel_manager_uses_builtin_channel_default_enabled(
+    extension_registry,
+):
+    from qwenpaw.app.channels.manager import ChannelManager
+    from qwenpaw.app.channels.registry import clear_builtin_channel_cache
+
+    class DefaultEnabledChannel(ProductBuiltinChannel):
+        channel = "default_enabled"
+
+        @classmethod
+        def from_config(cls, process, config, **kwargs):
+            channel = cls(process=process)
+            channel.enabled = config.enabled
+            return channel
+
+    extension_registry.channels.register_builtin(
+        BuiltinChannelSpec(
+            key="default_enabled",
+            factory=DefaultEnabledChannel,
+            default_enabled=True,
+        )
+    )
+    clear_builtin_channel_cache()
+
+    try:
+        with use_extension_registry(extension_registry):
+            manager = ChannelManager.from_config(
+                process=object(),
+                config=Config(),
+            )
+
+        assert any(
+            getattr(channel, "channel", None) == "default_enabled"
+            for channel in manager.channels
+        )
+    finally:
+        clear_builtin_channel_cache()
 
 
 def test_custom_channel_sources_include_extension_directories(

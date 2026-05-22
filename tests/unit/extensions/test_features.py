@@ -2,7 +2,9 @@ import json
 
 from qwenpaw.extensions import ExtensionRegistry, FeaturePolicy, PluginPolicy
 from qwenpaw.extensions.features import (
+    EXTENSION_FEATURES,
     iter_plugin_search_paths,
+    is_feature_enabled,
     should_create_builtin_qa_agent,
     should_load_plugin,
 )
@@ -22,6 +24,31 @@ def test_builtin_qa_agent_can_be_disabled():
     )
 
     assert should_create_builtin_qa_agent(registry) is False
+
+
+def test_feature_catalog_exposes_known_disable_switches():
+    keys = {feature.key for feature in EXTENSION_FEATURES}
+
+    assert "builtin_qa_agent" in keys
+    assert "plugins" in keys
+    assert "builtin_channels" in keys
+    assert "custom_channels" in keys
+    assert "fastapi_extension_routers" in keys
+
+
+def test_generic_feature_gate_respects_catalog():
+    registry = ExtensionRegistry()
+    registry.configure_features(FeaturePolicy(disabled_features={"plugins"}))
+
+    assert is_feature_enabled("plugins", registry) is False
+    assert is_feature_enabled("builtin_qa_agent", registry) is True
+
+
+def test_plugin_loading_feature_gate_disables_all_plugins():
+    registry = ExtensionRegistry()
+    registry.configure_features(FeaturePolicy(disabled_features={"plugins"}))
+
+    assert should_load_plugin(registry, "any-plugin") is False
 
 
 def test_plugin_policy_disabled_name_wins():

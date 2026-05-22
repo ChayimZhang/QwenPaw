@@ -20,7 +20,7 @@ from typing import (
 
 from .base import BaseChannel, ContentType, ProcessHandler, TextContent
 from .command_registry import CommandRegistry
-from .registry import get_channel_registry
+from .registry import default_channel_config_for, get_channel_registry
 from .unified_queue_manager import UnifiedQueueManager
 from ...config import get_available_channels
 
@@ -137,6 +137,8 @@ class ChannelManager:
             ch_cfg = getattr(ch, key, None)
             if ch_cfg is None and key in extra:
                 ch_cfg = extra[key]
+            if ch_cfg is None:
+                ch_cfg = default_channel_config_for(key)
             if ch_cfg is None:
                 continue
             if isinstance(ch_cfg, dict):

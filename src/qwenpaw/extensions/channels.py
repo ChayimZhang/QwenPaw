@@ -31,6 +31,9 @@ class ChannelExtensionRegistry:
     ) -> dict[str, BuiltinChannelSpec]:
         result: dict[str, BuiltinChannelSpec] = {}
         for key, spec in self.builtin_specs.items():
-            if spec.required or policy.is_channel_enabled(key):
+            if spec.required or (
+                policy.is_feature_enabled("builtin_channels")
+                and policy.is_channel_enabled(key)
+            ):
                 result[key] = spec
         return result
