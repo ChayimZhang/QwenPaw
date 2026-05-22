@@ -20,6 +20,7 @@ class ExtensionRegistry:
 
     def __init__(self) -> None:
         from qwenpaw.extensions.app import AppExtensionRegistry
+        from qwenpaw.extensions.channels import ChannelExtensionRegistry
         from qwenpaw.extensions.cli import CliRegistry
 
         self.product = ProductSpec()
@@ -27,6 +28,7 @@ class ExtensionRegistry:
         self.features = FeaturePolicy()
         self.plugins = PluginPolicy()
         self.app = AppExtensionRegistry()
+        self.channels = ChannelExtensionRegistry()
         self.cli = CliRegistry()
         self.extensions: dict[str, object] = {}
 

@@ -3,6 +3,7 @@
 from qwenpaw.extensions.cli import CliRegistry
 from qwenpaw.extensions.env import EnvResolver
 from qwenpaw.extensions.app import AppExtensionRegistry, RouterRegistration
+from qwenpaw.extensions.channels import ChannelExtensionRegistry
 from qwenpaw.extensions.loader import load_extensions
 from qwenpaw.extensions.logging import resolve_logging_spec
 from qwenpaw.extensions.specs import (
@@ -27,6 +28,7 @@ __all__ = [
     "AppPatch",
     "AppExtensionRegistry",
     "BuiltinChannelSpec",
+    "ChannelExtensionRegistry",
     "CliCommandPatch",
     "CliPatch",
     "CliRegistry",

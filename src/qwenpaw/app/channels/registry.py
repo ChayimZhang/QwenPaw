@@ -7,9 +7,15 @@ import importlib
 import logging
 import sys
 import threading
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ...constant import CUSTOM_CHANNELS_DIR
+from ...extensions import (
+    BuiltinChannelSpec,
+    get_extension_registry,
+    load_extensions,
+)
 from .base import BaseChannel
 
 if TYPE_CHECKING:
@@ -48,7 +54,27 @@ def _load_builtin_channels() -> dict[str, type[BaseChannel]]:
 
     A single optional dependency failure should not break CLI startup.
     """
+    _register_default_builtin_channel_specs()
+    extension_registry = get_extension_registry()
     out: dict[str, type[BaseChannel]] = {}
+    specs = extension_registry.channels.apply_policy(extension_registry.features)
+    for key, spec in specs.items():
+        cls = spec.factory
+        if not (
+            isinstance(cls, type)
+            and issubclass(cls, BaseChannel)
+            and cls is not BaseChannel
+        ):
+            if spec.required:
+                raise TypeError(f"{key} is not a BaseChannel subtype")
+            logger.debug("built-in channel unavailable: %s", key, exc_info=True)
+            continue
+        out[key] = cls
+    return out
+
+
+def _load_default_builtin_channel_specs() -> dict[str, BuiltinChannelSpec]:
+    out: dict[str, BuiltinChannelSpec] = {}
     for key, (module_name, class_name) in _BUILTIN_SPECS.items():
         try:
             mod = importlib.import_module(module_name, package=__package__)
@@ -75,8 +101,28 @@ def _load_builtin_channels() -> dict[str, type[BaseChannel]]:
                 exc_info=True,
             )
             continue
-        out[key] = cls
+        out[key] = BuiltinChannelSpec(
+            key=key,
+            factory=cls,
+            required=key in _REQUIRED_CHANNEL_KEYS,
+            default_enabled=key == "console",
+            display_name=key,
+        )
     return out
+
+
+def _register_default_builtin_channel_specs() -> None:
+    load_extensions()
+    extension_registry = get_extension_registry()
+    for key, spec in _load_default_builtin_channel_specs().items():
+        if key not in extension_registry.channels.builtin_specs:
+            extension_registry.channels.register_builtin(spec)
+
+
+def get_builtin_channel_keys() -> frozenset[str]:
+    """Return extension-aware built-in channel keys."""
+    _register_default_builtin_channel_specs()
+    return frozenset(get_extension_registry().channels.builtin_specs)
 
 
 def _get_cached_builtin_channels() -> dict[str, type[BaseChannel]]:
@@ -96,50 +142,140 @@ def clear_builtin_channel_cache() -> None:
 
 
 def _discover_custom_channels() -> dict[str, type[BaseChannel]]:
-    """Load channel classes from CUSTOM_CHANNELS_DIR."""
+    """Load channel classes from configured custom channel source dirs."""
     out: dict[str, type[BaseChannel]] = {}
-    if not CUSTOM_CHANNELS_DIR.is_dir():
-        return out
-
-    dir_str = str(CUSTOM_CHANNELS_DIR)
-    if dir_str not in sys.path:
-        sys.path.insert(0, dir_str)
-
-    for path in sorted(CUSTOM_CHANNELS_DIR.iterdir()):
-        if path.suffix == ".py" and path.stem != "__init__":
-            name = path.stem
-        elif path.is_dir() and (path / "__init__.py").exists():
-            name = path.name
-        else:
+    for _source_dir, _path, name in _iter_custom_channel_modules():
+        mod = _import_custom_channel_module(name)
+        if mod is None:
             continue
-        try:
-            mod = importlib.import_module(name)
-        except Exception:
-            logger.exception("failed to load custom channel: %s", name)
-            continue
-        for obj in vars(mod).values():
-            if (
-                isinstance(obj, type)
-                and issubclass(obj, BaseChannel)
-                and obj is not BaseChannel
-            ):
-                key = getattr(obj, "channel", None)
-                if key:
-                    out[key] = obj
-                    logger.debug("custom channel registered: %s", key)
+        for key, obj in _extract_channel_classes(mod).items():
+            out[key] = obj
+            logger.debug("custom channel registered: %s", key)
     return out
 
 
-BUILTIN_CHANNEL_KEYS = frozenset(_BUILTIN_SPECS.keys())
+def _iter_custom_channel_dirs() -> tuple[Path, ...]:
+    load_extensions()
+    paths = [
+        CUSTOM_CHANNELS_DIR,
+        *get_extension_registry().channels.custom_sources,
+    ]
+    out: list[Path] = []
+    seen: set[str] = set()
+    for raw_path in paths:
+        path = Path(raw_path).expanduser()
+        try:
+            path = path.resolve()
+        except OSError:
+            pass
+        key = str(path).casefold() if sys.platform == "win32" else str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(path)
+    return tuple(out)
+
+
+def _iter_custom_channel_modules():
+    for source_dir in _iter_custom_channel_dirs():
+        if not source_dir.is_dir():
+            continue
+        dir_str = str(source_dir)
+        if dir_str not in sys.path:
+            sys.path.insert(0, dir_str)
+        importlib.invalidate_caches()
+        for path in sorted(source_dir.iterdir()):
+            if path.suffix == ".py" and path.stem != "__init__":
+                yield source_dir, path, path.stem
+            elif path.is_dir() and (path / "__init__.py").exists():
+                yield source_dir, path, path.name
+
+
+def _import_custom_channel_module(name: str):
+    try:
+        return importlib.import_module(name)
+    except Exception:
+        logger.exception("failed to load custom channel: %s", name)
+        return None
+
+
+def _extract_channel_classes(mod) -> dict[str, type[BaseChannel]]:
+    out: dict[str, type[BaseChannel]] = {}
+    for obj in vars(mod).values():
+        if (
+            isinstance(obj, type)
+            and issubclass(obj, BaseChannel)
+            and obj is not BaseChannel
+        ):
+            key = getattr(obj, "channel", None)
+            if key:
+                out[key] = obj
+    return out
+
+
+class _BuiltinChannelKeys:
+    def __contains__(self, key: object) -> bool:
+        return key in get_builtin_channel_keys()
+
+    def __iter__(self):
+        return iter(get_builtin_channel_keys())
+
+    def __len__(self) -> int:
+        return len(get_builtin_channel_keys())
+
+    def __bool__(self) -> bool:
+        return bool(get_builtin_channel_keys())
+
+    def __repr__(self) -> str:
+        return repr(get_builtin_channel_keys())
+
+
+BUILTIN_CHANNEL_KEYS = _BuiltinChannelKeys()
+
+
+def _route_paths(app) -> set[str]:
+    return {
+        route.path
+        for route in getattr(app, "routes", ())
+        if getattr(route, "path", None)
+    }
+
+
+def _call_route_hook(app, name: str, hook) -> None:
+    prev_routes = _route_paths(app)
+    hook(app)
+    new_routes = _route_paths(app) - prev_routes
+    non_api = {path for path in new_routes if not path.startswith("/api/")}
+    if non_api:
+        logger.warning(
+            "Channel %s registered routes without /api/ prefix: %s. "
+            "These will be swallowed by the SPA catch-all.",
+            name,
+            non_api,
+        )
+
+
+def _register_builtin_channel_routes(app) -> None:
+    _register_default_builtin_channel_specs()
+    extension_registry = get_extension_registry()
+    specs = extension_registry.channels.apply_policy(extension_registry.features)
+    for key, spec in specs.items():
+        if callable(spec.route_hook):
+            try:
+                _call_route_hook(app, key, spec.route_hook)
+            except Exception:
+                logger.exception("Failed to load built-in channel routes: %s", key)
 
 
 def register_custom_channel_routes(app) -> None:
-    """Let custom channels register additional HTTP routes on the FastAPI app.
+    """Let registered channels add HTTP routes on the FastAPI app.
 
     Custom channel modules may define a module-level callable
     ``register_app_routes(app)``.  If present, it is called so the
     channel can mount its own API endpoints (e.g. QR login pages,
     webhook handlers, etc.).
+
+    Built-in channel specs may define ``route_hook`` for the same purpose.
 
     Must be called at module level (before the SPA catch-all route)
     to ensure route priority.  Channels that need access to
@@ -153,37 +289,15 @@ def register_custom_channel_routes(app) -> None:
 
     Errors in individual channel hooks are logged but never propagated.
     """
-    if not CUSTOM_CHANNELS_DIR.is_dir():
-        return
+    _register_builtin_channel_routes(app)
 
-    dir_str = str(CUSTOM_CHANNELS_DIR)
-    if dir_str not in sys.path:
-        sys.path.insert(0, dir_str)
-
-    for path in sorted(CUSTOM_CHANNELS_DIR.iterdir()):
-        if path.suffix == ".py" and path.stem != "__init__":
-            name = path.stem
-        elif path.is_dir() and (path / "__init__.py").exists():
-            name = path.name
-        else:
-            continue
+    for _source_dir, _path, name in _iter_custom_channel_modules():
         try:
             mod = importlib.import_module(name)
             hook = getattr(mod, "register_app_routes", None)
             if not callable(hook):
                 continue
-            prev_routes = {r.path for r in app.routes}
-            hook(app)
-            new_routes = {r.path for r in app.routes} - prev_routes
-            non_api = {p for p in new_routes if not p.startswith("/api/")}
-            if non_api:
-                logger.warning(
-                    "Custom channel %s registered routes without /api/ "
-                    "prefix: %s. These will be swallowed by the SPA "
-                    "catch-all.",
-                    name,
-                    non_api,
-                )
+            _call_route_hook(app, name, hook)
         except Exception:
             logger.exception("Failed to load custom channel routes: %s", name)
 
