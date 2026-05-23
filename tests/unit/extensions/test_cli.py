@@ -58,6 +58,33 @@ def test_root_click_uses_product_name_for_help(monkeypatch):
 
         assert result.exit_code == 0
         assert "Usage: myproduct" in result.output
+        assert "MyProduct CLI." in result.output
+    finally:
+        with use_extension_registry(ExtensionRegistry()):
+            importlib.reload(cli_main)
+
+
+def test_root_click_brands_lazy_command_short_help():
+    registry = ExtensionRegistry()
+    registry.configure_product(
+        ProductSpec(
+            product_name="MyProduct",
+            module_alias="myproduct",
+            cli_name="myproduct",
+            working_dir="~/.myproduct",
+        )
+    )
+
+    import qwenpaw.cli.main as cli_main
+    try:
+        with use_extension_registry(registry):
+            cli = importlib.reload(cli_main).cli
+        result = CliRunner().invoke(cli, ["--help"])
+
+        assert result.exit_code == 0
+        assert "Run MyProduct FastAPI app." in result.output
+        assert "Clear MyProduct WORKING_DIR" in result.output
+        assert "QwenPaw FastAPI app" not in result.output
     finally:
         with use_extension_registry(ExtensionRegistry()):
             importlib.reload(cli_main)

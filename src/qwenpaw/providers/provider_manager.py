@@ -19,6 +19,7 @@ from agentscope_runtime.engine.schemas.exception import (
 from ..constant import SECRET_DIR
 from ..config.config import ModelSlotConfig
 from ..exceptions import ProviderError
+from ..extensions import product_local_provider_name
 from .anthropic_provider import AnthropicProvider
 from .gemini_provider import GeminiProvider
 from .ollama_provider import OllamaProvider
@@ -857,7 +858,7 @@ PROVIDER_ZHIPU_INTL_CODINGPLAN = OpenAIProvider(
 
 PROVIDER_QWENPAW = OpenAIProvider(
     id="qwenpaw-local",
-    name="QwenPaw Local",
+    name=product_local_provider_name(),
     is_local=True,
     require_api_key=False,
 )

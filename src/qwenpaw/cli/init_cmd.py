@@ -24,6 +24,7 @@ from ..config.config import (
     HeartbeatConfig,
 )
 from ..constant import HEARTBEAT_DEFAULT_EVERY
+from ..extensions import brand_text
 from ..providers import ProviderManager
 from ..constant import WORKING_DIR
 
@@ -75,8 +76,8 @@ def _echo_security_warning_box() -> None:
     console = Console()
     console.print(
         Panel(
-            SECURITY_WARNING.strip(),
-            title="[bold]🐾 Security warning — please read[/bold]",
+            brand_text(SECURITY_WARNING.strip()),
+            title=brand_text("[bold]🐾 Security warning — please read[/bold]"),
             border_style="blue",
         ),
     )
@@ -87,8 +88,8 @@ def _echo_telemetry_info_box() -> None:
     console = Console()
     console.print(
         Panel(
-            TELEMETRY_INFO.strip(),
-            title="[bold]📊 Help improve QwenPaw[/bold]",
+            brand_text(TELEMETRY_INFO.strip()),
+            title=brand_text("[bold]📊 Help improve QwenPaw[/bold]"),
             border_style="blue",
         ),
     )

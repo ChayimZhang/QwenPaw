@@ -36,6 +36,7 @@ except ImportError:  # pragma: no cover - compatibility fallback
 from .utils.message_request_normalizer import (
     normalize_messages_for_model_request,
 )
+from ..extensions import cli_invocation
 from ..exceptions import ProviderError, ModelFormatterError
 from ..providers import ProviderManager
 from ..providers.retry_chat_model import (
@@ -1023,7 +1024,7 @@ def create_model_and_formatter(
             raise ProviderError(
                 message=(
                     "No active model configured. "
-                    "Please configure a model using 'qwenpaw models config' "
+                    f"Please configure a model using '{cli_invocation('models', 'config')}' "
                     "or set an agent-specific model."
                 ),
             )

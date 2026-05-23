@@ -66,6 +66,20 @@ def test_restore_lock_timeout_prefers_product_env_prefix(monkeypatch) -> None:
         assert safe_swap_module._restore_lock_timeout_seconds() == 7.0
 
 
+def test_restore_lock_file_name_uses_product_module_alias(tmp_path: Path) -> None:
+    registry = ExtensionRegistry()
+    registry.configure_product(
+        ProductSpec(
+            product_name="MyProduct",
+            module_alias="myproduct",
+            working_dir=tmp_path,
+        )
+    )
+
+    with use_extension_registry(registry):
+        assert safe_swap_module._restore_lock_file_name() == ".myproduct_restore.lock"
+
+
 @pytest.fixture(name="secrets_dir")
 def _secrets_dir(tmp_path: Path) -> Path:
     dst = tmp_path / "secrets"

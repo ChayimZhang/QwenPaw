@@ -61,7 +61,6 @@ logger = logging.getLogger(__name__)
 
 _RESTORE_TMP_SUFFIX = ".restore_tmp"
 _RESTORE_OLD_SUFFIX = ".restore_old"
-_RESTORE_LOCK_FILE = ".qwenpaw_restore.lock"
 _LOCK_REGION_SIZE = 1
 _LOCK_RETRY_INTERVAL_SECONDS = 0.1
 _LOCK_TIMEOUT_SECONDS_ENV = "QWENPAW_RESTORE_LOCK_TIMEOUT_SECONDS"
@@ -84,7 +83,8 @@ def restore_process_lock() -> Iterator[None]:
     """Serialise restore and restore-cleanup work across processes."""
     from ...constant import WORKING_DIR
 
-    lock_path = WORKING_DIR / _RESTORE_LOCK_FILE
+    _remove_legacy_restore_locks(WORKING_DIR)
+    lock_path = WORKING_DIR / _restore_lock_file_name()
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with open(lock_path, "a+b") as handle:
         _acquire_file_lock(handle, lock_path)
@@ -92,6 +92,25 @@ def restore_process_lock() -> Iterator[None]:
             yield
         finally:
             _release_file_lock(handle)
+
+
+def _restore_lock_file_name() -> str:
+    from ...extensions import restore_artifact_name
+
+    return restore_artifact_name(".lock")
+
+
+def _remove_legacy_restore_locks(working_dir: Path) -> None:
+    from ...extensions import get_extension_registry, legacy_restore_artifact_names
+    from ...extensions.specs import ProductSpec
+
+    if get_extension_registry().product == ProductSpec():
+        return
+    for name in legacy_restore_artifact_names(".lock"):
+        try:
+            (working_dir / name).unlink(missing_ok=True)
+        except OSError:
+            logger.debug("Could not remove legacy restore lock: %s", working_dir / name)
 
 
 def _acquire_file_lock(handle: BinaryIO, lock_path: Path) -> None:

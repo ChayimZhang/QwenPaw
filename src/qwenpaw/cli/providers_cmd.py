@@ -14,6 +14,7 @@ from agentscope_runtime.engine.schemas.exception import (
 
 from ..providers.provider import ModelInfo, Provider, ProviderInfo
 from ..providers.provider_manager import ProviderManager
+from ..extensions import cli_invocation
 from .utils import prompt_choice
 
 
@@ -361,7 +362,7 @@ def configure_llm_slot_interactive(*, use_defaults: bool = False) -> None:
     if not eligible:
         if use_defaults:
             click.echo(
-                "No LLM provider configured. Run 'qwenpaw models config' "
+                f"No LLM provider configured. Run '{cli_invocation('models', 'config')}' "
                 "to configure later.",
             )
             return
@@ -421,7 +422,7 @@ def configure_llm_slot_interactive(*, use_defaults: bool = False) -> None:
     if not model and use_defaults:
         click.echo(
             f"No default model for {defn.name}. "
-            "Run 'qwenpaw models config' to set one.",
+            f"Run '{cli_invocation('models', 'config')}' to set one.",
         )
         return
     try:
@@ -506,7 +507,9 @@ def list_cmd() -> None:
                     click.echo(f"    - {m.name}")
             else:
                 click.echo("  No models downloaded.")
-                click.echo("  Use 'qwenpaw models download' to add models.")
+                click.echo(
+                    f"  Use '{cli_invocation('models', 'download')}' to add models."
+                )
         else:
             click.echo(f"  {'base_url':16s}: {cur_url or '(not set)'}")
             click.echo(
@@ -596,8 +599,8 @@ def add_provider_cmd(
     if base_url:
         click.echo(f"  base_url: {base_url}")
     click.echo(
-        "  Run 'qwenpaw models add-model' to add models, "
-        "then 'qwenpaw models config-key' to set the API key.",
+        f"  Run '{cli_invocation('models', 'add-model')}' to add models, "
+        f"then '{cli_invocation('models', 'config-key')}' to set the API key.",
     )
 
 
@@ -774,7 +777,8 @@ def download_cmd(
     click.echo(f"  Name: {repo_id}")
     click.echo(
         "\nTo use this model, run:\n"
-        "  qwenpaw models set-llm  (select 'qwenpaw-local' provider)",
+        f"  {cli_invocation('models', 'set-llm')}  "
+        "(select 'qwenpaw-local' provider)",
     )
 
 
@@ -787,7 +791,10 @@ def list_local_cmd() -> None:
 
     if not models:
         click.echo("No local models downloaded.")
-        click.echo("Use 'qwenpaw models download <repo_id>' to download one.")
+        click.echo(
+            f"Use '{cli_invocation('models', 'download')} <repo_id>' "
+            "to download one."
+        )
         return
 
     click.echo(f"\n=== Local Models ({len(models)}) ===")

@@ -223,6 +223,25 @@ value = resolver.get("WORKING_DIR")
 | `console_static_dir` | 整体替换前端静态资源目录 |
 | `agent_prompt_files` | Agent 人设提示文件查找顺序 |
 
+## 产品品牌化
+
+SDK 会基于 `ProductSpec` 自动品牌化常见运行时体验，不需要业务包自己 monkey patch：
+
+- click 根命令、懒加载子命令、命令参数 help 文案中的 `QwenPaw`、`qwenpaw`、`QWENPAW`、`~/.qwenpaw` 会跟随产品配置替换。
+- `click.echo` / `click.secho` 的普通运行时输出会使用同一套替换规则。
+- init 安全提示、匿名遥测提示、模型配置提示会使用产品名和产品 CLI 命令。
+- 内置本地 provider 的显示名会从 `ProductSpec.product_name` 派生，例如 `MyProduct Local`。
+- 备份恢复内部文件名会从 `ProductSpec.module_alias` 派生，例如 `.myproduct_restore.lock`、`.myproduct_restore_old`、`.myproduct_restore_state`。
+
+业务包如果需要生成自己的提示文本，也可以直接调用：
+
+```python
+from qwenpaw.extensions import brand_text, cli_invocation
+
+brand_text("Run qwenpaw models config")
+cli_invocation("models", "config")
+```
+
 ## 日志
 
 代码方式：
