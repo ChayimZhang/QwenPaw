@@ -94,13 +94,18 @@ logging:
 
 
 def test_config_path_overrides_package_manifest_entry_point(tmp_path, monkeypatch):
-    package = tmp_path / "my_product"
+    package = tmp_path / "override_product"
     package.mkdir()
     (package / "__init__.py").write_text("", encoding="utf-8")
     (package / "manifest.yaml").write_text(
         """
 product:
   name: PackagedProduct
+  cli_name: packaged
+  env_prefixes: [PACKAGED, QWENPAW, COPAW]
+logging:
+  namespace: packaged
+  file_path: ./packaged.log
 """.strip(),
         encoding="utf-8",
     )
@@ -109,12 +114,14 @@ product:
         """
 product:
   name: OverrideProduct
+logging:
+  level: DEBUG
 """.strip(),
         encoding="utf-8",
     )
     registry = ExtensionRegistry()
     manifest_entry_point = _EntryPointStub(
-        module="my_product",
+        module="override_product",
         attr="manifest.yaml",
     )
     monkeypatch.syspath_prepend(str(tmp_path))
@@ -128,6 +135,29 @@ product:
     load_extensions(registry=registry, config_path=override)
 
     assert registry.product.product_name == "OverrideProduct"
+    assert registry.product.cli_name == "packaged"
+    assert registry.product.env_prefixes == ("PACKAGED", "QWENPAW", "COPAW")
+    assert registry.logging.namespace == "packaged"
+    assert registry.logging.file_path == package / "packaged.log"
+    assert registry.logging.level == "DEBUG"
+
+
+def test_manifest_product_working_dir_recomputes_default_child_paths(tmp_path):
+    manifest = tmp_path / "extension.yaml"
+    manifest.write_text(
+        """
+product:
+  working_dir: ./work
+""".strip(),
+        encoding="utf-8",
+    )
+    registry = ExtensionRegistry()
+
+    load_extensions(registry=registry, config_path=manifest, include_entry_points=False)
+
+    assert registry.product.working_dir == tmp_path / "work"
+    assert registry.product.backup_dir == tmp_path / "work" / "backups"
+    assert registry.product.plugins_dir == tmp_path / "work" / "plugins"
 
 
 def test_load_extensions_from_yaml_manifest(tmp_path):

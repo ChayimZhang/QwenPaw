@@ -57,6 +57,27 @@ def test_adapters_expose_feature_and_plugin_policy_helpers(tmp_path):
     assert registry.plugins.extra_search_paths == (tmp_path / "plugins",)
 
 
+def test_adapters_update_product_fields_without_resetting_logging(tmp_path):
+    registry = ExtensionRegistry()
+    registry.configure_logging(
+        type(registry.logging)(namespace="custom", file_path=tmp_path / "app.log")
+    )
+    adapters = ExtensionAdapters(registry)
+
+    adapters.product_version("2.0.0")
+
+    assert registry.product.product_version == "2.0.0"
+    assert registry.logging.namespace == "custom"
+    assert registry.logging.file_path == tmp_path / "app.log"
+
+    adapters.product(module_alias="custom_product")
+    adapters.logging(level="WARNING")
+
+    assert registry.product.module_alias == "custom_product"
+    assert registry.logging.namespace == "custom"
+    assert registry.logging.level == "WARNING"
+
+
 def test_registry_and_plugin_api_expose_adapters():
     registry = ExtensionRegistry()
     api = PluginApi("example", {})

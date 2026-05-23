@@ -40,6 +40,69 @@ def test_registry_configure_product_replaces_default(tmp_path):
     assert registry.logging.namespace == "myproduct"
 
 
+def test_registry_update_product_preserves_logging(tmp_path):
+    registry = ExtensionRegistry()
+    registry.configure_product(
+        ProductSpec(
+            product_name="MyProduct",
+            cli_name="myproduct",
+            working_dir=tmp_path / "work",
+        )
+    )
+    registry.configure_logging(
+        LoggingSpec(namespace="custom", file_path=tmp_path / "custom.log")
+    )
+
+    updated = registry.update_product(product_version="2.0.0")
+
+    assert updated.product_version == "2.0.0"
+    assert registry.product.product_name == "MyProduct"
+    assert registry.logging.namespace == "custom"
+    assert registry.logging.file_path == tmp_path / "custom.log"
+
+
+def test_registry_update_product_recomputes_default_child_paths(tmp_path):
+    registry = ExtensionRegistry()
+
+    registry.update_product(working_dir=tmp_path / "work")
+
+    assert registry.product.working_dir == tmp_path / "work"
+    assert registry.product.backup_dir == tmp_path / "work" / "backups"
+    assert registry.product.plugins_dir == tmp_path / "work" / "plugins"
+    assert registry.product.custom_channels_dir == tmp_path / "work" / "custom_channels"
+    assert registry.product.media_dir == tmp_path / "work" / "media"
+    assert registry.product.local_provider_dir == tmp_path / "work" / "local_models"
+
+
+def test_registry_update_product_preserves_custom_child_paths(tmp_path):
+    registry = ExtensionRegistry()
+    registry.update_product(
+        backup_dir=tmp_path / "custom-backups",
+        working_dir=tmp_path / "work",
+    )
+
+    assert registry.product.backup_dir == tmp_path / "custom-backups"
+
+
+def test_registry_update_logging_is_incremental(tmp_path):
+    registry = ExtensionRegistry()
+    registry.configure_logging(
+        LoggingSpec(
+            namespace="custom",
+            file_path=tmp_path / "custom.log",
+            format="%(levelname)s %(message)s",
+            level="DEBUG",
+        )
+    )
+
+    registry.update_logging(level="WARNING")
+
+    assert registry.logging.namespace == "custom"
+    assert registry.logging.file_path == tmp_path / "custom.log"
+    assert registry.logging.format == "%(levelname)s %(message)s"
+    assert registry.logging.level == "WARNING"
+
+
 def test_use_extension_registry_is_scoped():
     outer = get_extension_registry()
     inner = ExtensionRegistry()

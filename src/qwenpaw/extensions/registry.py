@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -17,6 +18,15 @@ from qwenpaw.extensions.specs import (
     ProductSpec,
     ProviderPatch,
 )
+
+
+_PRODUCT_DERIVED_PATHS = {
+    "backup_dir": "backups",
+    "plugins_dir": "plugins",
+    "custom_channels_dir": "custom_channels",
+    "media_dir": "media",
+    "local_provider_dir": "local_models",
+}
 
 
 class ExtensionRegistry:
@@ -42,8 +52,32 @@ class ExtensionRegistry:
         self.product = spec
         self.logging = LoggingSpec.from_product(spec)
 
+    def update_product(self, **changes: Any) -> ProductSpec:
+        """Incrementally update product fields without resetting logging."""
+        if not changes:
+            return self.product
+        product = self.product
+        old_working_dir = product.working_dir
+        next_changes = dict(changes)
+        if "working_dir" in next_changes:
+            for field_name, default_child in _PRODUCT_DERIVED_PATHS.items():
+                if field_name in next_changes:
+                    continue
+                current = getattr(product, field_name)
+                if current == old_working_dir / default_child:
+                    next_changes[field_name] = None
+        self.product = replace(product, **next_changes)
+        return self.product
+
     def configure_logging(self, spec: LoggingSpec) -> None:
         self.logging = spec
+
+    def update_logging(self, **changes: Any) -> LoggingSpec:
+        """Incrementally update logging fields."""
+        if not changes:
+            return self.logging
+        self.logging = replace(self.logging, **changes)
+        return self.logging
 
     def configure_features(self, policy: FeaturePolicy) -> None:
         self.features = FeaturePolicy(

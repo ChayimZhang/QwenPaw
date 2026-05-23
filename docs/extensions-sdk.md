@@ -55,6 +55,8 @@ manifest 覆盖优先级为：
 > 包内资源 manifest entry point
 ```
 
+manifest 使用增量覆盖语义：后加载的 manifest 只更新它显式声明的字段，未声明字段保持前面来源已经加载的值。例如包内 manifest 可以配置产品名、CLI 名、日志路径，部署环境 manifest 只写 `logging.level: DEBUG`，最终只会覆盖日志级别，不会清空产品名或日志路径。
+
 ### 推荐接入方式
 
 多数业务产品推荐组合使用：
@@ -209,6 +211,14 @@ plugins: {}
 3. `~` 开头路径按用户主目录解析。
 4. 绝对路径保持不变。
 
+增量覆盖规则：
+
+1. `product` 只更新 YAML 中显式出现的字段。
+2. `logging` 只更新 YAML 中显式出现的字段。
+3. `features` 会和已有禁用/允许集合合并。
+4. `plugins` 会和已有插件策略合并，`extra_search_paths` 会追加。
+5. 如果只更新 `product.working_dir`，并且 `backup_dir`、`plugins_dir`、`custom_channels_dir`、`media_dir`、`local_provider_dir` 仍是旧工作目录派生出的默认路径，它们会跟随新的 `working_dir` 重新派生；如果这些字段原本是业务自定义路径，则保持不变。
+
 ### product 字段
 
 | YAML 字段 | 对应 `ProductSpec` 字段 | 类型 | 默认值 | 说明 |
@@ -359,7 +369,39 @@ def extension(registry):
     )
 ```
 
-### 实现方式三：装饰器（灵活、可读性强，方便拆分函数）
+### 实现方式三：增量更新产品字段（推荐用于动态 version）
+
+如果 `manifest.yaml` 已经配置了产品名、目录、日志等内容，只想在 Python 中补充一个动态字段，例如从 `__version__.py` 读取版本号，推荐使用 `update_product()`。这个 API 只更新指定字段，不会重置 manifest 已经配置好的其他 product 字段或 logging。
+
+```python
+from qwenpaw.extensions import get_extension_registry
+from my_product.__version__ import __version__
+
+def extension(registry=None):
+    target = registry or get_extension_registry()
+    target.update_product(product_version=__version__)
+    return target
+```
+
+插件或适配器代码也可以用：
+
+```python
+def extension(registry):
+    registry.adapters.product_version("2.0.0")
+```
+
+其他 product 字段和 logging 字段也支持增量更新：
+
+```python
+def extension(registry):
+    registry.update_product(module_alias="myproduct")
+    registry.update_logging(level="DEBUG")
+
+    registry.adapters.product(cli_name="myproduct")
+    registry.adapters.logging(format="%(levelname)s %(message)s")
+```
+
+### 实现方式四：装饰器（灵活、可读性强，方便拆分函数）
 
 ```python
 from qwenpaw.extensions import ProductSpec, qwenpaw_extension
@@ -382,7 +424,7 @@ def product() -> ProductSpec:
     )
 ```
 
-### 实现方式四：声明式 `ExtensionSpec`（集中审计、适合复用）
+### 实现方式五：声明式 `ExtensionSpec`（集中审计、适合复用）
 
 ```python
 from qwenpaw.extensions import ExtensionSpec, ProductSpec

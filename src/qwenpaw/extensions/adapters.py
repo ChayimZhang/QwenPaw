@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -91,9 +90,16 @@ class ExtensionAdapters:
         self.registry.configure_plugins(PluginPolicy(extra_search_paths=(path,)))
 
     def agent_prompt_files(self, *paths: str | Path) -> None:
-        self.registry.configure_product(
-            replace(self.registry.product, agent_prompt_files=tuple(paths))
-        )
+        self.registry.update_product(agent_prompt_files=tuple(paths))
+
+    def product_version(self, version: str | None) -> None:
+        self.registry.update_product(product_version=version)
+
+    def product(self, **changes: Any) -> None:
+        self.registry.update_product(**changes)
+
+    def logging(self, **changes: Any) -> None:
+        self.registry.update_logging(**changes)
 
     def skill_service(self, workspace_dir: str | Path):
         from qwenpaw.agents.skill_system.workspace_service import SkillService

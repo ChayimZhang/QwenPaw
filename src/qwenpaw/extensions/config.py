@@ -11,9 +11,7 @@ import yaml
 from qwenpaw.extensions.registry import ExtensionRegistry
 from qwenpaw.extensions.specs import (
     FeaturePolicy,
-    LoggingSpec,
     PluginPolicy,
-    ProductSpec,
 )
 
 
@@ -26,6 +24,29 @@ _PRODUCT_PATH_KEYS = {
     "media_dir",
     "local_provider_dir",
     "console_static_dir",
+}
+_PRODUCT_FIELD_MAP = {
+    "name": "product_name",
+    "version": "product_version",
+    "module_alias": "module_alias",
+    "cli_name": "cli_name",
+    "skill_cli_name": "skill_cli_name",
+    "env_prefixes": "env_prefixes",
+    "working_dir": "working_dir",
+    "secret_dir": "secret_dir",
+    "backup_dir": "backup_dir",
+    "plugins_dir": "plugins_dir",
+    "custom_channels_dir": "custom_channels_dir",
+    "media_dir": "media_dir",
+    "local_provider_dir": "local_provider_dir",
+    "console_static_dir": "console_static_dir",
+    "agent_prompt_files": "agent_prompt_files",
+}
+_LOGGING_FIELD_MAP = {
+    "namespace": "namespace",
+    "file_path": "file_path",
+    "format": "format",
+    "level": "level",
 }
 
 
@@ -76,39 +97,26 @@ def apply_manifest_data(
     plugins = data.get("plugins") or {}
 
     if product:
-        registry.configure_product(
-            ProductSpec(
-                product_name=product.get("name", "QwenPaw"),
-                product_version=product.get("version"),
-                module_alias=product.get("module_alias", "qwenpaw"),
-                cli_name=product.get("cli_name", "qwenpaw"),
-                skill_cli_name=product.get("skill_cli_name"),
-                env_prefixes=tuple(product.get("env_prefixes", ("QWENPAW", "COPAW"))),
-                working_dir=product.get("working_dir", "~/.qwenpaw"),
-                secret_dir=product.get("secret_dir", "~/.qwenpaw.secret"),
-                backup_dir=product.get("backup_dir"),
-                plugins_dir=product.get("plugins_dir"),
-                custom_channels_dir=product.get("custom_channels_dir"),
-                media_dir=product.get("media_dir"),
-                local_provider_dir=product.get("local_provider_dir"),
-                console_static_dir=product.get("console_static_dir"),
-                agent_prompt_files=tuple(
-                    product.get(
-                        "agent_prompt_files",
-                        ("AGENTS.md", "SOUL.md", "PROFILE.md"),
-                    )
-                ),
+        product_changes = {
+            target: product[source]
+            for source, target in _PRODUCT_FIELD_MAP.items()
+            if source in product
+        }
+        if "env_prefixes" in product_changes:
+            product_changes["env_prefixes"] = tuple(product_changes["env_prefixes"])
+        if "agent_prompt_files" in product_changes:
+            product_changes["agent_prompt_files"] = tuple(
+                product_changes["agent_prompt_files"]
             )
-        )
+        registry.update_product(**product_changes)
 
     if logging:
-        registry.configure_logging(
-            LoggingSpec(
-                namespace=logging.get("namespace", registry.logging.namespace),
-                file_path=logging.get("file_path", registry.logging.file_path),
-                format=logging.get("format", registry.logging.format),
-                level=logging.get("level", registry.logging.level),
-            )
+        registry.update_logging(
+            **{
+                target: logging[source]
+                for source, target in _LOGGING_FIELD_MAP.items()
+                if source in logging
+            }
         )
 
     if features:
