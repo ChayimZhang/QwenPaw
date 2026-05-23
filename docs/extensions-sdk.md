@@ -47,6 +47,67 @@ QWENPAW_EXTENSION_CONFIG
 COPAW_EXTENSION_CONFIG
 ```
 
+也可以把 manifest 作为业务 Python 包内资源发布，并在 `pyproject.toml` 中声明资源入口。推荐业务产品使用这种方式，因为不会把 `manifest.yaml` 或 `console/` 安装到 Python 环境根目录，从而避免与其他包的同名文件冲突。
+
+```toml
+[project.entry-points."qwenpaw.extension_manifests"]
+my_product = "my_product:manifest.yaml"
+
+[tool.setuptools.package-data]
+my_product = ["manifest.yaml", "console/**"]
+```
+
+对应目录结构：
+
+```text
+src/my_product/
+  __init__.py
+  manifest.yaml
+  console/
+    index.html
+```
+
+`qwenpaw.extension_manifests` 不会执行业务代码，只会读取 entry point 中声明的包内 YAML 资源。manifest 中的相对路径会按资源所在目录解析，例如 `console_static_dir: ./console` 会解析到包内 `my_product/console`。
+
+如果没有显式 `config_path`，也没有 `*_EXTENSION_CONFIG` 环境变量，loader 会从当前工作目录和当前可执行文件路径向父目录自动发现 extension manifest。支持的文件名包括：
+
+```text
+manifest.yaml
+manifest.yml
+extension.yaml
+extension.yml
+qwenpaw-extension.yaml
+qwenpaw-extension.yml
+```
+
+自动发现只会加载包含 `product`、`logging`、`features` 或 `plugins` 顶层字段的 YAML，避免误加载普通项目 manifest。manifest 中的相对路径会按 manifest 文件所在目录解析，例如项目根目录存在 `manifest.yaml`：
+
+```yaml
+product:
+  name: MyProduct
+  cli_name: myproduct
+  env_prefixes: [MYPRODUCT, QWENPAW, COPAW]
+  working_dir: ./.myproduct
+  console_static_dir: ./console
+
+logging:
+  file_path: ./logs/runtime.log
+
+plugins:
+  extra_search_paths:
+    - ./plugins
+```
+
+业务入口可以只调用：
+
+```python
+from qwenpaw.extensions import load_extensions
+
+load_extensions()
+```
+
+manifest 覆盖优先级为：显式 `config_path` > `*_EXTENSION_CONFIG` 环境变量 > 自动发现的 manifest > 包内资源 manifest entry point；随后仍会加载 Python entry point，用于注册 CLI、Provider、FastAPI router、内置 channel 等 Python callable 能力。
+
 ## 最小 Decorator 示例
 
 Decorator 适合业务团队使用：声明式、集中、可读性强，也方便拆分多个函数。

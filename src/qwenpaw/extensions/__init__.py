@@ -17,6 +17,11 @@ from qwenpaw.extensions.branding import (
     restore_artifact_name,
 )
 from qwenpaw.extensions.channels import ChannelExtensionRegistry
+from qwenpaw.extensions.config import (
+    apply_manifest,
+    apply_manifest_data,
+    apply_manifest_resource,
+)
 from qwenpaw.extensions.decorators import (
     ExtensionContext,
     ExtensionDecorator,
@@ -33,7 +38,7 @@ from qwenpaw.extensions.features import (
     should_load_custom_channels,
     should_load_plugin,
 )
-from qwenpaw.extensions.loader import load_extensions
+from qwenpaw.extensions.loader import discover_extension_manifest, load_extensions
 from qwenpaw.extensions.logging import resolve_log_level, resolve_logging_spec
 from qwenpaw.extensions.providers import ProviderExtensionRegistry
 from qwenpaw.extensions.specs import (
@@ -58,6 +63,9 @@ from qwenpaw.extensions.registry import (
 __all__ = [
     "AppPatch",
     "AppExtensionRegistry",
+    "apply_manifest",
+    "apply_manifest_data",
+    "apply_manifest_resource",
     "brand_click_command",
     "brand_text",
     "branding_replacements",
@@ -84,6 +92,7 @@ __all__ = [
     "RouterSpec",
     "extension_registry",
     "cli_invocation",
+    "discover_extension_manifest",
     "friendly_path",
     "get_extension_registry",
     "install_click_output_branding",
