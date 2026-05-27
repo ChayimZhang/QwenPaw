@@ -15,7 +15,6 @@ def test_extension_decorator_registers_product_features_and_configure():
         return ProductSpec(
             product_name="MyProduct",
             cli_name="myproduct",
-            env_prefixes=("MYPRODUCT", "QWENPAW", "COPAW"),
         )
 
     @extension.features
@@ -24,21 +23,13 @@ def test_extension_decorator_registers_product_features_and_configure():
 
     @extension.configure
     def configure(context):
-        context.registry.cli.add_command(
-            "diagnose",
-            "my_product.cli",
-            "diagnose",
-        )
+        context.adapters.disable_channel("wechat")
 
     extension(registry)
 
     assert registry.product.product_name == "MyProduct"
     assert registry.features.is_feature_enabled("builtin_qa_agent") is False
-    assert registry.cli.added["diagnose"] == (
-        "my_product.cli",
-        "diagnose",
-        ".diagnose",
-    )
+    assert registry.features.is_channel_enabled("wechat") is False
 
 
 def test_extension_decorator_can_apply_to_bound_registry():

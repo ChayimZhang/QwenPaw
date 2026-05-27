@@ -1,27 +1,25 @@
-"""Environment variable resolution for extension-aware prefixes."""
+"""Environment variable resolution for QwenPaw's fixed env prefixes."""
 
 from __future__ import annotations
 
 import os
 from collections.abc import Mapping
 
-from qwenpaw.extensions.specs import ProductSpec
+_ENV_PREFIXES = ("QWENPAW", "COPAW")
 
 
 class EnvResolver:
-    """Resolve canonical env suffixes across product-specific prefixes."""
+    """Resolve canonical env suffixes across QwenPaw and legacy CoPaw prefixes."""
 
     def __init__(
         self,
-        product: ProductSpec,
         environ: Mapping[str, str] | None = None,
     ) -> None:
-        self.product = product
         self.environ = os.environ if environ is None else environ
 
     def suffix(self, key: str) -> str:
         normalized = key.strip().upper()
-        for prefix in self.product.env_prefixes:
+        for prefix in _ENV_PREFIXES:
             marker = f"{prefix}_"
             if normalized.startswith(marker):
                 return normalized[len(marker) :]
@@ -29,7 +27,7 @@ class EnvResolver:
 
     def names(self, key: str) -> tuple[str, ...]:
         suffix = self.suffix(key)
-        return tuple(f"{prefix}_{suffix}" for prefix in self.product.env_prefixes)
+        return tuple(f"{prefix}_{suffix}" for prefix in _ENV_PREFIXES)
 
     def key(self, key: str) -> str:
         return self.names(key)[0]

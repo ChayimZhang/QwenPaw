@@ -65,10 +65,7 @@ def test_load_extensions_from_package_manifest_entry_point(tmp_path, monkeypatch
 product:
   name: MyProduct
   cli_name: myproduct
-  env_prefixes: [MYPRODUCT, QWENPAW, COPAW]
   console_static_dir: ./console
-logging:
-  file_path: ./logs/runtime.log
 """.strip(),
         encoding="utf-8",
     )
@@ -90,7 +87,6 @@ logging:
 
     assert registry.product.product_name == "MyProduct"
     assert registry.product.console_static_dir == package / "console"
-    assert registry.logging.file_path == package / "logs" / "runtime.log"
 
 
 def test_config_path_overrides_package_manifest_entry_point(tmp_path, monkeypatch):
@@ -102,10 +98,6 @@ def test_config_path_overrides_package_manifest_entry_point(tmp_path, monkeypatc
 product:
   name: PackagedProduct
   cli_name: packaged
-  env_prefixes: [PACKAGED, QWENPAW, COPAW]
-logging:
-  namespace: packaged
-  file_path: ./packaged.log
 """.strip(),
         encoding="utf-8",
     )
@@ -114,8 +106,6 @@ logging:
         """
 product:
   name: OverrideProduct
-logging:
-  level: DEBUG
 """.strip(),
         encoding="utf-8",
     )
@@ -136,10 +126,6 @@ logging:
 
     assert registry.product.product_name == "OverrideProduct"
     assert registry.product.cli_name == "packaged"
-    assert registry.product.env_prefixes == ("PACKAGED", "QWENPAW", "COPAW")
-    assert registry.logging.namespace == "packaged"
-    assert registry.logging.file_path == package / "packaged.log"
-    assert registry.logging.level == "DEBUG"
 
 
 def test_manifest_product_working_dir_recomputes_default_child_paths(tmp_path):
@@ -169,26 +155,17 @@ product:
   version: 2.0.0
   module_alias: my_product
   cli_name: myproduct
-  env_prefixes: [MYPRODUCT, QWENPAW, COPAW]
   working_dir: ~/.myproduct
   secret_dir: ~/.myproduct.secret
   console_static_dir: /opt/myproduct/console
   agent_prompt_files:
     - MY_PRODUCT.md
     - AGENTS.md
-logging:
-  namespace: myproduct
-  file_path: /var/log/myproduct/runtime.log
-  format: "%(levelname)s %(message)s"
-  level: DEBUG
 features:
   disabled_features:
     - builtin_qa_agent
   disabled_channels:
     - wechat
-plugins:
-  extra_search_paths:
-    - /opt/myproduct/plugins
 """.strip(),
         encoding="utf-8",
     )
@@ -203,19 +180,9 @@ plugins:
     assert registry.product.product_name == "MyProduct"
     assert registry.product.module_alias == "my_product"
     assert registry.product.cli_name == "myproduct"
-    assert registry.product.env_prefixes == ("MYPRODUCT", "QWENPAW", "COPAW")
     assert registry.product.agent_prompt_files == ("MY_PRODUCT.md", "AGENTS.md")
-    assert registry.logging.namespace == "myproduct"
-    assert registry.logging.file_path.as_posix().endswith(
-        "/var/log/myproduct/runtime.log"
-    )
-    assert registry.logging.format == "%(levelname)s %(message)s"
-    assert registry.logging.level == "DEBUG"
     assert registry.features.is_feature_enabled("builtin_qa_agent") is False
     assert registry.features.is_channel_enabled("wechat") is False
-    assert registry.plugins.extra_search_paths[0].as_posix().endswith(
-        "/opt/myproduct/plugins"
-    )
 
 
 def test_load_extensions_discovers_project_manifest(tmp_path, monkeypatch):
@@ -228,14 +195,8 @@ def test_load_extensions_discovers_project_manifest(tmp_path, monkeypatch):
 product:
   name: MyProduct
   cli_name: myproduct
-  env_prefixes: [MYPRODUCT, QWENPAW, COPAW]
   working_dir: ./.runtime
   console_static_dir: ./console
-logging:
-  file_path: ./logs/runtime.log
-plugins:
-  extra_search_paths:
-    - ./plugins
 """.strip(),
         encoding="utf-8",
     )
@@ -247,8 +208,6 @@ plugins:
     assert registry.product.product_name == "MyProduct"
     assert registry.product.working_dir == project / ".runtime"
     assert registry.product.console_static_dir == project / "console"
-    assert registry.logging.file_path == project / "logs" / "runtime.log"
-    assert registry.plugins.extra_search_paths == (project / "plugins",)
 
 
 def test_discover_extension_manifest_ignores_unrelated_manifest(tmp_path):
@@ -291,17 +250,8 @@ product:
     assert discover_extension_manifest() == project / "manifest.yaml"
 
 
-def test_load_extensions_config_path_uses_registry_env_prefixes(tmp_path, monkeypatch):
-    product_manifest = tmp_path / "product.yaml"
+def test_load_extensions_config_path_uses_qwenpaw_env(tmp_path, monkeypatch):
     qwenpaw_manifest = tmp_path / "qwenpaw.yaml"
-    product_manifest.write_text(
-        """
-product:
-  name: MyProduct
-  env_prefixes: [MYPRODUCT, QWENPAW, COPAW]
-""".strip(),
-        encoding="utf-8",
-    )
     qwenpaw_manifest.write_text(
         """
 product:
@@ -309,28 +259,20 @@ product:
 """.strip(),
         encoding="utf-8",
     )
-    monkeypatch.setenv("MYPRODUCT_EXTENSION_CONFIG", str(product_manifest))
     monkeypatch.setenv("QWENPAW_EXTENSION_CONFIG", str(qwenpaw_manifest))
     registry = ExtensionRegistry()
-    registry.configure_product(
-        ProductSpec(env_prefixes=("MYPRODUCT", "QWENPAW", "COPAW"))
-    )
 
     load_extensions(registry=registry, include_entry_points=False)
 
-    assert registry.product.product_name == "MyProduct"
+    assert registry.product.product_name == "QwenPawFallback"
 
 
-def test_load_extensions_bootstrap_discovers_business_prefixed_config(
-    tmp_path,
-    monkeypatch,
-):
+def test_load_extensions_ignores_business_prefixed_config(tmp_path, monkeypatch):
     manifest = tmp_path / "extension.yaml"
     manifest.write_text(
         """
 product:
   name: MyProduct
-  env_prefixes: [MYPRODUCT, QWENPAW, COPAW]
 """.strip(),
         encoding="utf-8",
     )
@@ -339,8 +281,7 @@ product:
 
     load_extensions(registry=registry, include_entry_points=False)
 
-    assert registry.product.product_name == "MyProduct"
-    assert registry.product.env_prefixes == ("MYPRODUCT", "QWENPAW", "COPAW")
+    assert registry.product.product_name == "QwenPaw"
 
 
 def test_load_extensions_is_idempotent(monkeypatch):

@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Optional
 
 from qwenpaw.constant import SECRET_DIR, WORKING_DIR
-from qwenpaw.extensions import EnvResolver, get_extension_registry
+from qwenpaw.envs.resolver import EnvResolver
 from qwenpaw.security.secret_store import decrypt, encrypt, is_encrypted
 
 logger = logging.getLogger(__name__)
@@ -88,7 +88,7 @@ _PROTECTED_BOOTSTRAP_SUFFIXES = frozenset({"WORKING_DIR", "SECRET_DIR"})
 
 
 def _is_protected_bootstrap_key(key: str) -> bool:
-    resolver = EnvResolver(get_extension_registry().product)
+    resolver = EnvResolver()
     return resolver.suffix(key) in _PROTECTED_BOOTSTRAP_SUFFIXES
 
 

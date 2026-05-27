@@ -2,7 +2,8 @@
 from pathlib import Path
 from dotenv import load_dotenv
 
-from qwenpaw.extensions import EnvResolver, get_extension_registry, load_extensions
+from qwenpaw.extensions import get_extension_registry, load_extensions
+from qwenpaw.envs.resolver import EnvResolver
 
 # Load .env file from project root before reading any env vars
 _env_path = Path(__file__).resolve().parent.parent.parent / ".env"
@@ -13,7 +14,7 @@ _EXTENSION_REGISTRY = get_extension_registry()
 _PRODUCT = _EXTENSION_REGISTRY.product
 _DEFAULT_PRODUCT = type(_PRODUCT)()
 _USES_DEFAULT_PRODUCT = _PRODUCT == _DEFAULT_PRODUCT
-_ENV = EnvResolver(_PRODUCT)
+_ENV = EnvResolver()
 
 
 def _get_env(key: str, default: str = "") -> str:
@@ -86,7 +87,7 @@ class EnvVarLoader:
 
 
 # WORKING_DIR priority:
-# 1. Product-prefixed WORKING_DIR env var, then QWENPAW/COPAW fallbacks.
+# 1. QWENPAW_WORKING_DIR env var, then COPAW_WORKING_DIR fallback.
 # 2. ~/.copaw exists in the default product profile (legacy installation).
 # 3. ProductSpec.working_dir.
 _explicit_working_dir = _get_env("WORKING_DIR")

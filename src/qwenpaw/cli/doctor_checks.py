@@ -54,7 +54,7 @@ from ..constant import (
     WORKING_DIR,
     EnvVarLoader,
 )
-from ..extensions import EnvResolver, get_extension_registry
+from ..envs.resolver import EnvResolver
 from ..utils.logging import LOG_FILE_BASENAME
 from ..utils.system_info import summarize_python_environment
 from ..providers.provider import Provider
@@ -214,7 +214,7 @@ def environment_summary_lines(
             + (server_python_note or "(unknown)"),
         )
     lines.append(f"working_dir: {WORKING_DIR}")
-    env_resolver = EnvResolver(get_extension_registry().product)
+    env_resolver = EnvResolver()
     for env_name in env_resolver.names("WORKING_DIR"):
         env_value = os.getenv(env_name)
         if env_value:

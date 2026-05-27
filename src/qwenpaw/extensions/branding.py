@@ -19,11 +19,9 @@ def friendly_path(path: str | Path) -> str:
 
 def branding_replacements(product: ProductSpec | None = None) -> tuple[tuple[str, str], ...]:
     product = product or get_extension_registry().product
-    env_prefix = product.env_prefixes[0] if product.env_prefixes else "QWENPAW"
     return (
         ("QwenPaw", product.product_name),
         ("qwenpaw", product.module_alias),
-        ("QWENPAW", env_prefix),
         ("~/.qwenpaw", friendly_path(product.working_dir)),
     )
 

@@ -1,9 +1,6 @@
 """Public extension SDK exports."""
 
-from qwenpaw.extensions.cli import CliRegistry
-from qwenpaw.extensions.env import EnvResolver
 from qwenpaw.extensions.adapters import ExtensionAdapters
-from qwenpaw.extensions.app import AppExtensionRegistry, RouterRegistration, RouterSpec
 from qwenpaw.extensions.branding import (
     brand_click_command,
     brand_text,
@@ -30,29 +27,18 @@ from qwenpaw.extensions.decorators import (
 from qwenpaw.extensions.features import (
     EXTENSION_FEATURES,
     ExtensionFeature,
-    iter_plugin_search_paths,
     is_feature_enabled,
     should_create_builtin_qa_agent,
-    should_include_extension_routers,
     should_load_builtin_channel,
     should_load_custom_channels,
-    should_load_plugin,
 )
 from qwenpaw.extensions.loader import discover_extension_manifest, load_extensions
-from qwenpaw.extensions.logging import resolve_log_level, resolve_logging_spec
-from qwenpaw.extensions.providers import ProviderExtensionRegistry
 from qwenpaw.extensions.runner import RunnerExtensionRegistry, RunnerQueryContext
 from qwenpaw.extensions.specs import (
-    AppPatch,
     BuiltinChannelSpec,
-    CliCommandPatch,
-    CliPatch,
     ExtensionSpec,
     FeaturePolicy,
-    LoggingSpec,
-    PluginPolicy,
     ProductSpec,
-    ProviderPatch,
     RunnerPatch,
 )
 from qwenpaw.extensions.registry import (
@@ -63,8 +49,6 @@ from qwenpaw.extensions.registry import (
 )
 
 __all__ = [
-    "AppPatch",
-    "AppExtensionRegistry",
     "apply_manifest",
     "apply_manifest_data",
     "apply_manifest_resource",
@@ -73,10 +57,6 @@ __all__ = [
     "branding_replacements",
     "BuiltinChannelSpec",
     "ChannelExtensionRegistry",
-    "CliCommandPatch",
-    "CliPatch",
-    "CliRegistry",
-    "EnvResolver",
     "EXTENSION_FEATURES",
     "ExtensionFeature",
     "ExtensionAdapters",
@@ -85,13 +65,7 @@ __all__ = [
     "ExtensionDecorator",
     "ExtensionSpec",
     "FeaturePolicy",
-    "LoggingSpec",
-    "PluginPolicy",
     "ProductSpec",
-    "ProviderPatch",
-    "ProviderExtensionRegistry",
-    "RouterRegistration",
-    "RouterSpec",
     "RunnerExtensionRegistry",
     "RunnerQueryContext",
     "RunnerPatch",
@@ -101,20 +75,15 @@ __all__ = [
     "friendly_path",
     "get_extension_registry",
     "install_click_output_branding",
-    "iter_plugin_search_paths",
     "is_feature_enabled",
     "legacy_restore_artifact_names",
     "load_extensions",
     "product_cli_name",
     "product_local_provider_name",
-    "resolve_log_level",
-    "resolve_logging_spec",
     "restore_artifact_name",
     "should_create_builtin_qa_agent",
-    "should_include_extension_routers",
     "should_load_builtin_channel",
     "should_load_custom_channels",
-    "should_load_plugin",
     "qwenpaw_extension",
     "use_extension_registry",
 ]

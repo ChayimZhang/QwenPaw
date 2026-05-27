@@ -17,8 +17,7 @@ from typing import Dict, List, Optional, Tuple
 from .architecture import PluginManifest, PluginRecord
 from .api import PluginApi
 from .registry import PluginRegistry
-from ..extensions import get_extension_registry, load_extensions
-from ..extensions.features import iter_plugin_search_paths, should_load_plugin
+from ..extensions import load_extensions
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +32,8 @@ class PluginLoader:
             plugin_dirs: List of directories to search for plugins
         """
         load_extensions()
-        extension_registry = get_extension_registry()
         self.plugin_dirs = self._dedupe_plugin_dirs(
-            [
-                *(Path(d) for d in plugin_dirs),
-                *iter_plugin_search_paths(extension_registry),
-            ]
+            [Path(d) for d in plugin_dirs]
         )
         self.registry = PluginRegistry()
         self._loaded_plugins: Dict[str, PluginRecord] = {}
@@ -85,15 +80,6 @@ class PluginLoader:
 
                 try:
                     manifest = self._load_manifest(manifest_path)
-                    if not should_load_plugin(
-                        get_extension_registry(),
-                        manifest.id,
-                    ):
-                        logger.info(
-                            "Plugin disabled by extension policy: %s",
-                            manifest.id,
-                        )
-                        continue
                     discovered.append((manifest, item))
                     logger.info(f"Discovered plugin: {manifest.id}")
                 except Exception as e:

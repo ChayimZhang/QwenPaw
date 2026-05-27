@@ -160,17 +160,17 @@ def _raise_restore_lock_timeout(lock_path: Path) -> None:
 
 
 def _restore_lock_timeout_env_name() -> str:
-    from ...extensions import EnvResolver, get_extension_registry
+    from ...envs.resolver import EnvResolver
 
-    return EnvResolver(get_extension_registry().product).key(
+    return EnvResolver().key(
         _LOCK_TIMEOUT_SECONDS_ENV,
     )
 
 
 def _restore_lock_timeout_seconds() -> float:
-    from ...extensions import EnvResolver, get_extension_registry
+    from ...envs.resolver import EnvResolver
 
-    raw = EnvResolver(get_extension_registry().product).get(
+    raw = EnvResolver().get(
         _LOCK_TIMEOUT_SECONDS_ENV,
     )
     if not raw:

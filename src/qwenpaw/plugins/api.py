@@ -78,13 +78,6 @@ class PluginApi:
         """
         self._registry = registry
 
-    @property
-    def extensions(self):
-        """Access the unified QwenPaw extension SDK facade."""
-        from qwenpaw.extensions import get_extension_registry
-
-        return get_extension_registry().adapters
-
     def register_provider(
         self,
         provider_id: str,

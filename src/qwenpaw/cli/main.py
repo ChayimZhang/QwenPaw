@@ -162,7 +162,7 @@ def _extension_lazy_subcommands():
     skill_cli_name = _EXTENSION_REGISTRY.product.skill_cli_name
     if skill_cli_name and "skills" in commands:
         commands.setdefault(skill_cli_name, commands["skills"])
-    return _EXTENSION_REGISTRY.cli.build_lazy_subcommands(commands)
+    return commands
 
 
 @click.group(

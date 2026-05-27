@@ -1,100 +1,257 @@
 # QwenPaw Extension SDK 使用指南
 
-Extension SDK 用来把 QwenPaw 当成 Python 依赖库使用，同时把产品名、目录、环境变量、CLI、FastAPI、channel、provider、插件、功能开关、前端静态资源等通用扩展点开放给业务产品。业务团队应优先通过独立 Python 包、包内 manifest、装饰器或声明式 spec 接入，而不是修改 QwenPaw 源码。
-
-本文中的 `MyProduct`、`MYPRODUCT`、`myproduct` 都是占位示例。SDK 不硬编码任何业务关键字，真实产品名、环境变量前缀、目录、命令名都应由业务扩展包或 manifest 提供。
+本文档描述当前精简后的 Extension SDK。SDK 只保留业务确实需要的低侵入扩展面，已移除日志配置、插件策略、CLI 命令扩展、FastAPI 路由扩展、LLM Provider 扩展、Skill 服务入口、Control command 扩展、环境变量前缀替换。
 
 ## 一、架构设计
 
-Extension SDK 的核心设计是“统一注册中心 + 多种接入方式 + QwenPaw 运行时消费注册结果”。
+Extension SDK 以 `ExtensionRegistry` 为核心保存运行时扩展状态：
 
 ```text
-业务产品包
-  pyproject.toml
-    qwenpaw.extension_manifests -> 包内 manifest YAML
-    qwenpaw.extensions          -> Python 扩展入口，可选
-  manifest.yaml                 -> 产品、日志、功能、插件等声明式配置
-  extension.py                  -> decorator / fluent / ExtensionSpec，可选
-  console/                      -> 可替换前端静态资源，可选
-
-QwenPaw Extension SDK
-  loader.py       -> load_extensions，发现并加载 manifest 和 Python entry point
-  config.py       -> 解析 manifest，写入 ExtensionRegistry
-  registry.py     -> ExtensionRegistry，统一保存所有扩展状态
-  specs.py        -> ProductSpec、LoggingSpec、FeaturePolicy、ExtensionSpec 等声明式模型
-  adapters.py     -> ExtensionAdapters，给业务和插件使用的统一 API
-  decorators.py   -> qwenpaw_extension 装饰器入口
-  cli.py          -> Click 命令增删改别名
-  app.py          -> FastAPI router、生命周期、静态资源目录
-  channels.py     -> 内置 channel 和 custom channel source
-  providers.py    -> LLM provider 增加、替换、禁用
-  features.py     -> 功能开关、插件策略、channel/provider 策略判断
-  env.py          -> 环境变量前缀解析
-  logging.py      -> 日志配置解析
-  branding.py     -> CLI 文案、输出、restore 文件名等产品品牌化
-
-QwenPaw 运行时
-  CLI / FastAPI / provider manager / channel registry / plugin loader / constants
-  在启动时调用 load_extensions()，再读取 ExtensionRegistry 中的扩展状态
+业务项目
+  manifest.yaml / extension.py
+        |
+        v
+qwenpaw.extensions.loader.load_extensions()
+        |
+        v
+ExtensionRegistry
+  product      -> 产品名、CLI 名、用户目录、前端资源、Agent prompt 文件
+  features     -> 功能禁用、channel 禁用
+  channels     -> 内置 channel 注册、替换、custom channel source
+  runner       -> AgentRunner query handler 托管和 query stream hooks
 ```
 
-### 加载顺序
+QwenPaw 原生代码只在少量稳定入口读取 registry：
 
-`load_extensions()` 会按以下顺序加载扩展：
+| 入口 | 作用 |
+| --- | --- |
+| `qwenpaw.constant` | 读取产品名、模块名、目录配置 |
+| CLI 根命令 | 读取产品名、CLI 名、版本、skill CLI alias |
+| channel registry | 读取内置 channel 和 custom channel source |
+| AgentRunner | 执行 query handler 托管与 query stream hooks |
+| console static | 读取 `ProductSpec.console_static_dir` |
 
-1. 包内资源 manifest entry point：`qwenpaw.extension_manifests`
-2. 显式 `config_path`、环境变量 `*_EXTENSION_CONFIG` 或自动发现的 manifest，覆盖包内默认配置
-3. Python 扩展 entry point：`qwenpaw.extensions`，用于注册 callable 能力，例如 CLI、FastAPI router、provider、内置 channel
+## 二、功能清单
 
-manifest 覆盖优先级为：
+| 功能 | 做什么 | 模块 / 类 | 使用方式 |
+| --- | --- | --- | --- |
+| 产品配置 | 定制产品名、模块名、CLI 名、版本、用户目录、前端目录、Agent prompt 文件 | `specs.py` / `ProductSpec` | manifest、API、声明式、装饰器 |
+| 功能开关 | 禁用通用功能、禁用 channel | `specs.py` / `FeaturePolicy` | manifest、API、声明式、装饰器 |
+| 内置 channel | 注册、替换、禁用产品内置 channel | `channels.py` / `BuiltinChannelSpec` | API、声明式、装饰器 |
+| custom channel source | 增加 custom channel 搜索目录 | `channels.py` / `ExtensionAdapters.custom_channel_source` | API、装饰器 |
+| AgentRunner query handler 托管 | 业务完全接管 `AgentRunner.query_handler` | `runner.py` / `RunnerQueryContext` | API、声明式、装饰器 |
+| AgentRunner query stream hooks | 观察 QwenPaw 原生最终流式输出 | `runner.py` / `RunnerQueryContext` | API、声明式、装饰器 |
+| 前端静态资源替换 | 指定业务 console 静态资源目录 | `app.py` / `resolve_console_static_dir` | manifest、API、声明式 |
+| 品牌化文案 | 替换常见 QwenPaw 产品名、模块名、用户目录文案 | `branding.py` | 自动、API |
 
-```text
-显式 config_path
-> *_EXTENSION_CONFIG 环境变量
-> 自动发现的 manifest
-> 包内资源 manifest entry point
+## 三、manifest.yaml
+
+推荐业务项目通过包内 manifest 提供静态配置。
+
+`pyproject.toml`：
+
+```toml
+[project.entry-points."qwenpaw.extension_manifests"]
+my_product = "my_product:manifest.yaml"
+
+[project.entry-points."qwenpaw.extensions"]
+my_product = "my_product.extension:extension"
 ```
 
-manifest 使用增量覆盖语义：后加载的 manifest 只更新它显式声明的字段，未声明字段保持前面来源已经加载的值。例如包内 manifest 可以配置产品名、CLI 名、日志路径，部署环境 manifest 只写 `logging.level: DEBUG`，最终只会覆盖日志级别，不会清空产品名或日志路径。
+`manifest.yaml`：
 
-### 推荐接入方式
+```yaml
+product:
+  name: MyProduct
+  version: 2.0.0
+  module_alias: my_product
+  cli_name: myproduct
+  skill_cli_name: myproduct-skills
+  working_dir: ~/.myproduct
+  secret_dir: ~/.myproduct.secret
+  console_static_dir: ./console
+  agent_prompt_files:
+    - MY_PRODUCT.md
+    - AGENTS.md
 
-多数业务产品推荐组合使用：
+features:
+  disabled_features:
+    - builtin_qa_agent
+  disabled_channels:
+    - discord
+```
 
-1. `qwenpaw.extension_manifests` + 包内 `manifest.yaml`：配置产品名、CLI 名、环境变量、目录、日志、功能开关、插件搜索路径、前端静态目录。
-2. `qwenpaw.extensions` + `qwenpaw_extension()`：注册 CLI 命令、FastAPI router、provider、内置 channel、control command、复杂 Python callable。
-3. `ExtensionSpec`：需要集中审计、跨产品线复用、或者用单一对象表达扩展时使用。
-4. `ExtensionAdapters`：插件内部或普通 Python 扩展内部的统一 API。
+manifest 使用增量覆盖语义：后加载的 manifest 只更新显式声明字段，不会清空已经加载的其他字段。相对路径相对于 manifest 文件所在目录解析。
 
-## 二、功能总览清单
+### product 字段
 
-| 能力 | 用途 | 主要模块 | 主要类/函数 | 支持方式 |
+| YAML 字段 | `ProductSpec` 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
-| 扩展加载 | 加载 manifest 和 Python entry point | `loader.py`、`config.py` | `load_extensions`、`apply_manifest`、`apply_manifest_resource` | 配置文件、包内资源、自动发现、API |
-| 产品品牌与目录 | 定制产品名、版本、模块名、CLI 名、工作目录、密钥目录、前端目录、Agent prompt 文件 | `specs.py`、`registry.py`、`branding.py` | `ProductSpec`、`ExtensionBuilder.product`、`brand_text` | manifest、API、声明式、装饰器 |
-| 环境变量前缀 | 让 `MYPRODUCT_*` 优先，回落到 `QWENPAW_*`、`COPAW_*` | `env.py` | `EnvResolver` | manifest、API |
-| 日志配置 | 定制 logger namespace、日志文件、格式、级别、handler factory | `specs.py`、`logging.py` | `LoggingSpec`、`resolve_logging_spec`、`resolve_log_level` | manifest、API、声明式 |
-| 功能开关 | 禁用 QA agent、插件、内置 channel、自定义 channel、FastAPI extension router | `features.py`、`specs.py` | `FeaturePolicy`、`EXTENSION_FEATURES` | manifest、API、声明式、装饰器 |
-| 插件策略 | 禁用插件、允许列表、增加插件搜索路径 | `specs.py`、`features.py`、`adapters.py` | `PluginPolicy`、`iter_plugin_search_paths` | manifest、API、声明式 |
-| CLI 命令 | 增加、替换、禁用、增加别名 | `cli.py`、`registry.py`、`adapters.py` | `CliRegistry`、`CliPatch`、`CliCommandPatch` | API、声明式、装饰器 |
-| FastAPI 扩展 | 增加 router、startup/shutdown hook、middleware、include router 前后 hook | `app.py`、`registry.py`、`adapters.py` | `AppExtensionRegistry`、`AppPatch`、`RouterSpec` | API、声明式、装饰器 |
-| 前端静态资源替换 | 替换 QwenPaw console 静态资源目录 | `app.py`、`specs.py` | `ProductSpec.console_static_dir`、`resolve_console_static_dir` | manifest、API、声明式 |
-| 内置 channel | 注册、替换、禁用产品内置 channel | `channels.py`、`specs.py`、`adapters.py` | `BuiltinChannelSpec`、`ChannelExtensionRegistry` | API、声明式、装饰器 |
-| custom channel source | 增加文件目录式 custom channel 来源 | `channels.py`、`adapters.py` | `custom_channel_source`、`add_custom_source` | API、装饰器 |
-| LLM provider | 增加、替换、禁用 provider | `providers.py`、`specs.py`、`adapters.py` | `ProviderPatch`、`ProviderExtensionRegistry` | API、声明式、装饰器、manifest 禁用 |
-| 插件统一入口 | 让插件内部也使用 Extension SDK 能力 | `plugins/api.py`、`adapters.py` | `PluginApi.extensions`、`ExtensionAdapters` | 插件 API |
-| Skill 服务入口 | 业务或插件访问 SkillService、SkillPoolService | `adapters.py` | `skill_service`、`skill_pool_service` | API、插件 API |
-| Control command | 注册或移除 runner control command | `adapters.py` | `control_command`、`unregister_control_command` | API、装饰器 |
-| AgentRunner query_handler 托管 | 用业务函数完全接管 `AgentRunner.query_handler`，自行产出 `(msg, last)` | `runner.py`、`adapters.py`、`decorators.py` | `RunnerExtensionRegistry`、`RunnerQueryContext`、`RunnerPatch` | API、声明式、装饰器 |
-| AgentRunner query stream hooks | 用三段式 hook 包裹 QwenPaw 原生最终流式输出，观察 mission phase 和标准 agent stream 的 `msg`、`last`，并读取 `request`、`runner`、`agent`、`workspace` | `runner.py`、`adapters.py`、`decorators.py` | `RunnerExtensionRegistry`、`RunnerQueryContext`、`RunnerPatch` | API、声明式、装饰器 |
-| 品牌化运行时文案 | 自动替换 CLI help、click 输出、安全提示、provider 提示、restore 文件名 | `branding.py`、`cli/main.py`、`init_cmd.py`、`provider_manager.py` | `brand_text`、`brand_click_command`、`restore_artifact_name` | 自动、API |
-| 测试隔离 | 在测试中切换 registry，避免污染全局状态 | `registry.py` | `use_extension_registry` | API |
+| `name` | `product_name` | string | `QwenPaw` | 产品显示名 |
+| `version` | `product_version` | string 或 null | `None` | 产品版本 |
+| `module_alias` | `module_alias` | string | `qwenpaw` | 模块别名，用于部分文案和内部文件名 |
+| `cli_name` | `cli_name` | string | `qwenpaw` | CLI 根命令名 |
+| `skill_cli_name` | `skill_cli_name` | string 或 null | `None` | skills 命令别名 |
+| `working_dir` | `working_dir` | path | `~/.qwenpaw` | 用户工作目录 |
+| `secret_dir` | `secret_dir` | path | `~/.qwenpaw.secret` | secret 目录 |
+| `backup_dir` | `backup_dir` | path 或 null | `<working_dir>/backups` | 备份目录 |
+| `plugins_dir` | `plugins_dir` | path 或 null | `<working_dir>/plugins` | 原生插件目录 |
+| `custom_channels_dir` | `custom_channels_dir` | path 或 null | `<working_dir>/custom_channels` | custom channel 目录 |
+| `media_dir` | `media_dir` | path 或 null | `<working_dir>/media` | 媒体目录 |
+| `local_provider_dir` | `local_provider_dir` | path 或 null | `<working_dir>/local_models` | 本地模型目录 |
+| `console_static_dir` | `console_static_dir` | path 或 null | `None` | 业务前端静态资源目录 |
+| `agent_prompt_files` | `agent_prompt_files` | string list | `["AGENTS.md", "SOUL.md", "PROFILE.md"]` | Agent 人设文件列表 |
 
-## 三、扩展加载和项目接入
+### features 字段
 
-### 实现方式一：包内 manifest entry point（推荐）
+| YAML 字段 | `FeaturePolicy` 字段 | 类型 | 说明 |
+| --- | --- | --- | --- |
+| `disabled_features` | `disabled_features` | string list | 禁用通用功能，例如 `builtin_qa_agent`、`plugins`、`builtin_channels`、`custom_channels` |
+| `disabled_channels` | `disabled_channels` | string list | 禁用指定 channel |
 
-适合产品默认配置。manifest 和前端资源作为 Python 包内资源发布，不会安装到环境根目录，也不会和其他包的同名文件冲突。
+## 四、Python API
+
+### 产品配置
+
+实现方式一：manifest（推荐）
+
+适合产品名、目录、前端目录等静态配置。
+
+实现方式二：增量 API（适合动态版本号）
+
+```python
+from my_product.__version__ import __version__
+
+def extension(registry):
+    registry.adapters.product_version(__version__)
+    registry.adapters.product(module_alias="my_product")
+```
+
+实现方式三：装饰器
+
+```python
+from qwenpaw.extensions import ProductSpec, qwenpaw_extension
+
+extension = qwenpaw_extension("my_product")
+
+@extension.product
+def product():
+    return ProductSpec(
+        product_name="MyProduct",
+        cli_name="myproduct",
+        working_dir="~/.myproduct",
+    )
+```
+
+### 功能开关
+
+```python
+from qwenpaw.extensions import FeaturePolicy, qwenpaw_extension
+
+extension = qwenpaw_extension("my_product")
+
+@extension.features
+def features():
+    return FeaturePolicy(
+        disabled_features={"builtin_qa_agent"},
+        disabled_channels={"discord"},
+    )
+```
+
+也可以使用 adapter：
+
+```python
+def extension(registry):
+    registry.adapters.disable_feature("builtin_qa_agent")
+    registry.adapters.disable_channel("discord")
+```
+
+### 内置 channel
+
+```python
+from qwenpaw.extensions import BuiltinChannelSpec, qwenpaw_extension
+from my_product.channels.workchat import WorkChatChannel, WorkChatConfig
+
+extension = qwenpaw_extension("my_product")
+
+@extension.configure
+def configure(context):
+    context.adapters.builtin_channel(
+        BuiltinChannelSpec(
+            key="workchat",
+            factory=WorkChatChannel,
+            config_model=WorkChatConfig,
+            default_enabled=True,
+            display_name="Work Chat",
+        )
+    )
+    context.adapters.custom_channel_source("~/.myproduct/custom_channels")
+```
+
+### AgentRunner query handler 托管
+
+该 hook 在 QwenPaw 原生 `AgentRunner.query_handler` 之前执行。第一个返回非 `None` 的 hook 会完全接管本次 query。
+
+```python
+from qwenpaw.extensions import RunnerQueryContext, qwenpaw_extension
+
+extension = qwenpaw_extension("my_product")
+
+@extension.query_handler_hook
+async def handle_query(context: RunnerQueryContext):
+    if getattr(context.request, "channel", "") != "my_channel":
+        return None
+
+    async def stream():
+        yield "business message", False
+        yield "done", True
+
+    return stream()
+```
+
+返回值可以是 `None`、async iterable、sync iterable，或单个 `(msg, last)` tuple。业务完全托管后，query stream hooks 不会自动观察业务输出，业务需要自行统计。
+
+### AgentRunner query stream hooks
+
+这组三段式 hook 只观察 QwenPaw 原生最终流式输出：`run_mission_phase1`、`run_mission_phase2`、`_stream_printing_messages_interruptible`。
+
+```python
+from qwenpaw.extensions import RunnerQueryContext, qwenpaw_extension
+
+extension = qwenpaw_extension("my_product")
+
+@extension.before_query_stream_hook
+async def before_stream(context: RunnerQueryContext):
+    context.state["tracker"] = await start_query_stats(
+        request=context.request,
+        agent=context.agent,
+        workspace=context.workspace,
+    )
+
+@extension.query_stream_message_hook
+async def on_stream_message(context: RunnerQueryContext, msg, last):
+    await context.state["tracker"].observe_message(msg, last)
+
+@extension.after_query_stream_hook
+async def after_stream(context: RunnerQueryContext, error):
+    await context.state["tracker"].finish(error=error)
+```
+
+`RunnerQueryContext` 字段：
+
+| 字段 | 说明 |
+| --- | --- |
+| `request` | `query_handler` 的 request 入参 |
+| `runner` | 当前 `AgentRunner` |
+| `agent` | 当前 query 内创建的 `QwenPawAgent` |
+| `workspace` | 当前 workspace |
+| `msgs` | 原始消息 |
+| `kwargs` | 原始 kwargs 的只读映射 |
+| `state` | 同一次 query stream hooks 共享的 dict |
+
+`after_query_stream_hook(context, error)` 中 `error=None` 表示正常结束。
+
+## 五、完整 Demo
 
 目录结构：
 
@@ -103,11 +260,71 @@ my_product/
   pyproject.toml
   src/my_product/
     __init__.py
-    cli.py
+    __version__.py
     manifest.yaml
-    console/
-      index.html
     extension.py
+    channels/workchat.py
+    console/index.html
+```
+
+`src/my_product/__version__.py`：
+
+```python
+__version__ = "2.0.0"
+```
+
+`src/my_product/manifest.yaml`：
+
+```yaml
+product:
+  name: MyProduct
+  module_alias: my_product
+  cli_name: myproduct
+  skill_cli_name: myproduct-skills
+  working_dir: ~/.myproduct
+  secret_dir: ~/.myproduct.secret
+  console_static_dir: ./console
+
+features:
+  disabled_features:
+    - builtin_qa_agent
+  disabled_channels:
+    - discord
+```
+
+`src/my_product/extension.py`：
+
+```python
+from qwenpaw.extensions import BuiltinChannelSpec, qwenpaw_extension
+from my_product.__version__ import __version__
+from my_product.channels.workchat import WorkChatChannel, WorkChatConfig
+
+extension = qwenpaw_extension("my_product")
+
+@extension.configure
+def configure(context):
+    api = context.adapters
+    api.product_version(__version__)
+    api.builtin_channel(
+        BuiltinChannelSpec(
+            key="workchat",
+            factory=WorkChatChannel,
+            config_model=WorkChatConfig,
+            default_enabled=True,
+        )
+    )
+
+@extension.before_query_stream_hook
+async def before_stream(context):
+    context.state["tracker"] = await start_query_stats(request=context.request)
+
+@extension.query_stream_message_hook
+async def on_stream_message(context, msg, last):
+    await context.state["tracker"].observe_message(msg, last)
+
+@extension.after_query_stream_hook
+async def after_stream(context, error):
+    await context.state["tracker"].finish(error=error)
 ```
 
 `pyproject.toml`：
@@ -121,1513 +338,19 @@ my_product = "my_product:manifest.yaml"
 
 [project.entry-points."qwenpaw.extensions"]
 my_product = "my_product.extension:extension"
-
-[tool.setuptools.package-data]
-my_product = ["manifest.yaml", "console/**"]
 ```
 
-`src/my_product/cli.py`：
+## 六、已移除能力
 
-```python
-def main() -> None:
-    from qwenpaw.extensions import load_extensions
+以下能力不再由 Extension SDK 提供：
 
-    load_extensions(force=True)
-
-    from qwenpaw.cli.main import cli
-
-    cli()
-```
-
-### 实现方式二：显式配置文件（推荐用于部署覆盖）
-
-适合线上环境、私有化部署、灰度环境临时覆盖默认配置。
-
-```python
-from qwenpaw.extensions import load_extensions
-
-load_extensions(config_path="/etc/myproduct/qwenpaw-extension.yaml")
-```
-
-也可以通过环境变量覆盖：
-
-```powershell
-$env:MYPRODUCT_EXTENSION_CONFIG = "D:\config\myproduct-extension.yaml"
-myproduct -h
-```
-
-如果 `ProductSpec.env_prefixes = ("MYPRODUCT", "QWENPAW", "COPAW")`，查找顺序为：
-
-```text
-MYPRODUCT_EXTENSION_CONFIG
-QWENPAW_EXTENSION_CONFIG
-COPAW_EXTENSION_CONFIG
-```
-
-### 实现方式三：自动发现 manifest（适合源码项目或本地调试）
-
-当没有显式 `config_path`，也没有 `*_EXTENSION_CONFIG`，loader 会从当前工作目录和当前可执行文件路径向父目录查找：
-
-```text
-manifest.yaml
-manifest.yml
-extension.yaml
-extension.yml
-qwenpaw-extension.yaml
-qwenpaw-extension.yml
-```
-
-自动发现只加载包含 `product`、`logging`、`features`、`plugins` 顶层字段的 YAML，避免误加载普通项目 manifest。
-
-### 实现方式四：Python entry point（适合 callable 扩展）
-
-`qwenpaw.extensions` 用于加载 Python 对象。entry point 可以返回或应用以下对象：
-
-```toml
-[project.entry-points."qwenpaw.extensions"]
-my_product = "my_product.extension:extension"
-```
-
-`extension` 可以是：
-
-1. 普通函数，签名为 `def extension(registry: ExtensionRegistry) -> None`
-2. `qwenpaw_extension()` 返回的 decorator 对象
-3. `ExtensionSpec`
-4. `ExtensionSpec` 列表
-
-## 四、Manifest YAML 字段完整说明
-
-manifest 当前支持四个顶层字段：
-
-```yaml
-product: {}
-logging: {}
-features: {}
-plugins: {}
-```
-
-相对路径规则：
-
-1. 文件系统 manifest：相对路径按 manifest 文件所在目录解析。
-2. 包内资源 manifest：相对路径按包内 manifest 所在目录解析。
-3. `~` 开头路径按用户主目录解析。
-4. 绝对路径保持不变。
-
-增量覆盖规则：
-
-1. `product` 只更新 YAML 中显式出现的字段。
-2. `logging` 只更新 YAML 中显式出现的字段。
-3. `features` 会和已有禁用/允许集合合并。
-4. `plugins` 会和已有插件策略合并，`extra_search_paths` 会追加。
-5. 如果只更新 `product.working_dir`，并且 `backup_dir`、`plugins_dir`、`custom_channels_dir`、`media_dir`、`local_provider_dir` 仍是旧工作目录派生出的默认路径，它们会跟随新的 `working_dir` 重新派生；如果这些字段原本是业务自定义路径，则保持不变。
-
-### product 字段
-
-| YAML 字段 | 对应 `ProductSpec` 字段 | 类型 | 默认值 | 说明 |
-| --- | --- | --- | --- | --- |
-| `name` | `product_name` | string | `QwenPaw` | 产品展示名，用于 help、提示、日志默认 namespace 等 |
-| `version` | `product_version` | string/null | `null` | 产品版本 |
-| `module_alias` | `module_alias` | string | `qwenpaw` | 模块别名，用于品牌化文案和 restore 文件名，例如 `.myproduct_restore.lock` |
-| `cli_name` | `cli_name` | string | `qwenpaw` | 主 CLI 名，例如 `myproduct` |
-| `skill_cli_name` | `skill_cli_name` | string/null | `null` | skills 命令别名，例如 `myproduct-skills` |
-| `env_prefixes` | `env_prefixes` | string list | `["QWENPAW", "COPAW"]` | 环境变量前缀，必须是非空大写字符串，越靠前优先级越高 |
-| `working_dir` | `working_dir` | path | `~/.qwenpaw` | 工作目录 |
-| `secret_dir` | `secret_dir` | path | `~/.qwenpaw.secret` | 密钥目录 |
-| `backup_dir` | `backup_dir` | path/null | `<working_dir>/backups` | 备份目录 |
-| `plugins_dir` | `plugins_dir` | path/null | `<working_dir>/plugins` | 插件目录 |
-| `custom_channels_dir` | `custom_channels_dir` | path/null | `<working_dir>/custom_channels` | custom channel 目录 |
-| `media_dir` | `media_dir` | path/null | `<working_dir>/media` | 媒体目录 |
-| `local_provider_dir` | `local_provider_dir` | path/null | `<working_dir>/local_models` | 本地模型目录 |
-| `console_static_dir` | `console_static_dir` | path/null | `null` | 前端静态资源目录，用于替换内置 console |
-| `agent_prompt_files` | `agent_prompt_files` | path list | `["AGENTS.md", "SOUL.md", "PROFILE.md"]` | Agent 人设 prompt 文件读取顺序 |
-
-### logging 字段
-
-| YAML 字段 | 对应 `LoggingSpec` 字段 | 类型 | 默认值 | 说明 |
-| --- | --- | --- | --- | --- |
-| `namespace` | `namespace` | string | `qwenpaw` 或产品名小写 | logger namespace |
-| `file_path` | `file_path` | path/null | `<working_dir>/<namespace>.log` | 日志文件路径 |
-| `format` | `format` | string | `%(asctime)s - %(name)s - %(levelname)s - %(message)s` | Python logging format |
-| `level` | `level` | string | `INFO` | handler 日志级别 |
-
-说明：`handler_factory` 是 Python callable，不能通过 YAML 表达，需要用 API、声明式或装饰器配置。
-
-### features 字段
-
-| YAML 字段 | 对应 `FeaturePolicy` 字段 | 类型 | 说明 |
-| --- | --- | --- | --- |
-| `disabled_features` | `disabled_features` | string list | 禁用 SDK 暴露的通用功能 |
-| `disabled_channels` | `disabled_channels` | string list | 禁用指定 channel key |
-| `disabled_providers` | `disabled_providers` | string list | 禁用指定 provider id |
-| `disabled_plugins` | `disabled_plugins` | string list | 禁用指定 plugin id |
-| `allowed_plugins` | `allowed_plugins` | string list | 插件允许列表，非空时只允许列表内插件 |
-
-当前可禁用的通用 feature：
-
-| feature key | 说明 | 影响位置 |
-| --- | --- | --- |
-| `builtin_qa_agent` | 是否创建内置 QA agent workspace | `features.py`、`app/migration.py` |
-| `plugins` | 是否发现和加载插件 | `features.py`、`plugins/loader.py` |
-| `builtin_channels` | 是否注册非 required 的内置 channel | `features.py`、`app/channels/registry.py` |
-| `custom_channels` | 是否加载目录式 custom channel | `features.py`、`app/channels/registry.py` |
-| `fastapi_extension_routers` | 是否 include extension router | `features.py`、`app.py` |
-
-### plugins 字段
-
-| YAML 字段 | 对应 `PluginPolicy` 字段 | 类型 | 说明 |
-| --- | --- | --- | --- |
-| `disabled_plugins` | `disabled_plugins` | string list | 禁用插件 |
-| `allowed_plugins` | `allowed_plugins` | string list | 允许列表 |
-| `extra_search_paths` | `extra_search_paths` | path list | 额外插件搜索目录 |
-
-### 完整 manifest 示例
-
-```yaml
-product:
-  name: MyProduct
-  version: 2.0.0
-  module_alias: myproduct
-  cli_name: myproduct
-  skill_cli_name: myproduct-skills
-  env_prefixes:
-    - MYPRODUCT
-    - QWENPAW
-    - COPAW
-  working_dir: ~/.myproduct
-  secret_dir: ~/.myproduct.secret
-  backup_dir: ~/.myproduct/backups
-  plugins_dir: ~/.myproduct/plugins
-  custom_channels_dir: ~/.myproduct/custom_channels
-  media_dir: ~/.myproduct/media
-  local_provider_dir: ~/.myproduct/local_models
-  console_static_dir: ./console
-  agent_prompt_files:
-    - MY_PRODUCT.md
-    - AGENTS.md
-    - SOUL.md
-    - PROFILE.md
-
-logging:
-  namespace: myproduct
-  file_path: ~/.myproduct/logs/runtime.log
-  format: "%(asctime)s %(levelname)s [%(name)s] %(message)s"
-  level: INFO
-
-features:
-  disabled_features:
-    - builtin_qa_agent
-  disabled_channels:
-    - discord
-  disabled_providers:
-    - ollama
-  disabled_plugins:
-    - community-demo
-  allowed_plugins:
-    - my-product-plugin
-
-plugins:
-  extra_search_paths:
-    - ~/.myproduct/plugins
-```
-
-## 五、产品品牌、目录和 Agent 人设
-
-### 实现方式一：manifest（推荐）
-
-适合产品名、CLI 名、环境变量、目录等稳定配置。
-
-```yaml
-product:
-  name: MyProduct
-  version: 2.0.0
-  module_alias: myproduct
-  cli_name: myproduct
-  skill_cli_name: myproduct-skills
-  env_prefixes: [MYPRODUCT, QWENPAW, COPAW]
-  working_dir: ~/.myproduct
-  secret_dir: ~/.myproduct.secret
-  console_static_dir: ./console
-  agent_prompt_files:
-    - MY_PRODUCT.md
-    - AGENTS.md
-    - SOUL.md
-    - PROFILE.md
-```
-
-### 实现方式二：Fluent Builder（简单 Python 配置）
-
-适合只改少量产品字段。
-
-```python
-def extension(registry):
-    (
-        registry.extension("my_product")
-        .product(name="MyProduct", version="2.0.0", cli_name="myproduct")
-        .env_prefix("MYPRODUCT")
-        .working_dir("~/.myproduct")
-        .secret_dir("~/.myproduct.secret")
-        .console_static_dir("/opt/myproduct/console")
-        .skill_cli_name("myproduct-skills")
-    )
-```
-
-### 实现方式三：增量更新产品字段（推荐用于动态 version）
-
-如果 `manifest.yaml` 已经配置了产品名、目录、日志等内容，只想在 Python 中补充一个动态字段，例如从 `__version__.py` 读取版本号，推荐使用 `update_product()`。这个 API 只更新指定字段，不会重置 manifest 已经配置好的其他 product 字段或 logging。
-
-```python
-from qwenpaw.extensions import get_extension_registry
-from my_product.__version__ import __version__
-
-def extension(registry=None):
-    target = registry or get_extension_registry()
-    target.update_product(product_version=__version__)
-    return target
-```
-
-插件或适配器代码也可以用：
-
-```python
-def extension(registry):
-    registry.adapters.product_version("2.0.0")
-```
-
-其他 product 字段和 logging 字段也支持增量更新：
-
-```python
-def extension(registry):
-    registry.update_product(module_alias="myproduct")
-    registry.update_logging(level="DEBUG")
-
-    registry.adapters.product(cli_name="myproduct")
-    registry.adapters.logging(format="%(levelname)s %(message)s")
-```
-
-### 实现方式四：装饰器（灵活、可读性强，方便拆分函数）
-
-```python
-from qwenpaw.extensions import ProductSpec, qwenpaw_extension
-
-extension = qwenpaw_extension("my_product")
-
-@extension.product
-def product() -> ProductSpec:
-    return ProductSpec(
-        product_name="MyProduct",
-        product_version="2.0.0",
-        module_alias="myproduct",
-        cli_name="myproduct",
-        skill_cli_name="myproduct-skills",
-        env_prefixes=("MYPRODUCT", "QWENPAW", "COPAW"),
-        working_dir="~/.myproduct",
-        secret_dir="~/.myproduct.secret",
-        console_static_dir="/opt/myproduct/console",
-        agent_prompt_files=("MY_PRODUCT.md", "AGENTS.md", "SOUL.md", "PROFILE.md"),
-    )
-```
-
-### 实现方式五：声明式 `ExtensionSpec`（集中审计、适合复用）
-
-```python
-from qwenpaw.extensions import ExtensionSpec, ProductSpec
-
-extension = ExtensionSpec(
-    name="my_product",
-    product=ProductSpec(
-        product_name="MyProduct",
-        module_alias="myproduct",
-        cli_name="myproduct",
-        env_prefixes=("MYPRODUCT", "QWENPAW", "COPAW"),
-        working_dir="~/.myproduct",
-        secret_dir="~/.myproduct.secret",
-    ),
-)
-```
-
-### `ProductSpec` 字段完整说明
-
-| 字段 | 类型 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `product_name` | `str` | `QwenPaw` | 产品展示名 |
-| `module_alias` | `str` | `qwenpaw` | 模块别名和 restore 文件名前缀 |
-| `cli_name` | `str` | `qwenpaw` | 主 CLI 名 |
-| `env_prefixes` | `tuple[str, ...]` | `("QWENPAW", "COPAW")` | 环境变量前缀，前者优先 |
-| `working_dir` | `str | Path` | `~/.qwenpaw` | 工作目录 |
-| `secret_dir` | `str | Path` | `~/.qwenpaw.secret` | 密钥目录 |
-| `product_version` | `str | None` | `None` | 产品版本 |
-| `skill_cli_name` | `str | None` | `None` | skills CLI 别名 |
-| `backup_dir` | `str | Path | None` | `<working_dir>/backups` | 备份目录 |
-| `plugins_dir` | `str | Path | None` | `<working_dir>/plugins` | 插件目录 |
-| `custom_channels_dir` | `str | Path | None` | `<working_dir>/custom_channels` | custom channel 目录 |
-| `media_dir` | `str | Path | None` | `<working_dir>/media` | 媒体目录 |
-| `local_provider_dir` | `str | Path | None` | `<working_dir>/local_models` | 本地 provider 模型目录 |
-| `console_static_dir` | `str | Path | None` | `None` | 前端静态资源目录 |
-| `agent_prompt_files` | `tuple[str | Path, ...]` | `("AGENTS.md", "SOUL.md", "PROFILE.md")` | Agent 人设 prompt 文件 |
-
-## 六、环境变量前缀
-
-环境变量统一由 `EnvResolver` 处理。假设：
-
-```python
-ProductSpec(env_prefixes=("MYPRODUCT", "QWENPAW", "COPAW"))
-```
-
-读取 `WORKING_DIR` 时会按顺序查找：
-
-```text
-MYPRODUCT_WORKING_DIR
-QWENPAW_WORKING_DIR
-COPAW_WORKING_DIR
-```
-
-### API 用法
-
-```python
-from qwenpaw.extensions import EnvResolver, get_extension_registry
-
-resolver = EnvResolver(get_extension_registry().product)
-
-working_dir = resolver.get("WORKING_DIR")
-debug = resolver.get_bool("DEBUG", default=False)
-port = resolver.get_int("PORT", default=8000)
-temperature = resolver.get_float("TEMPERATURE", default=0.7)
-canonical_name = resolver.key("WORKING_DIR")  # MYPRODUCT_WORKING_DIR
-all_names = resolver.names("WORKING_DIR")
-```
-
-## 七、日志配置
-
-### 实现方式一：manifest（推荐）
-
-```yaml
-logging:
-  namespace: myproduct
-  file_path: ~/.myproduct/logs/runtime.log
-  format: "%(asctime)s %(levelname)s [%(name)s] %(message)s"
-  level: INFO
-```
-
-### 实现方式二：API 或声明式（需要 handler_factory 时使用）
-
-```python
-from qwenpaw.extensions import LoggingSpec
-
-def extension(registry):
-    registry.configure_logging(
-        LoggingSpec(
-            namespace="myproduct",
-            file_path="~/.myproduct/logs/runtime.log",
-            format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
-            level="DEBUG",
-        )
-    )
-```
-
-自定义 handler：
-
-```python
-import logging
-from qwenpaw.extensions import LoggingSpec
-
-def handler_factory(namespace, file_path, fmt, level):
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter(fmt))
-    return [handler]
-
-extension = ExtensionSpec(
-    name="my_product",
-    logging=LoggingSpec(
-        namespace="myproduct",
-        level="INFO",
-        handler_factory=handler_factory,
-    ),
-)
-```
-
-### `LoggingSpec` 字段完整说明
-
-| 字段 | 类型 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `namespace` | `str` | `qwenpaw` | logger namespace |
-| `file_path` | `str | Path | None` | `None` | 文件日志路径 |
-| `format` | `str` | `%(asctime)s - %(name)s - %(levelname)s - %(message)s` | logging format |
-| `level` | `str` | `INFO` | handler level |
-| `handler_factory` | `Callable | None` | `None` | 自定义 handler 创建函数，只能通过 Python 配置 |
-
-## 八、功能开关和插件策略
-
-### 实现方式一：manifest（推荐）
-
-```yaml
-features:
-  disabled_features:
-    - builtin_qa_agent
-  disabled_channels:
-    - discord
-  disabled_providers:
-    - ollama
-  disabled_plugins:
-    - community-demo
-  allowed_plugins:
-    - my-product-plugin
-
-plugins:
-  disabled_plugins:
-    - old-plugin
-  allowed_plugins:
-    - my-product-plugin
-  extra_search_paths:
-    - ~/.myproduct/plugins
-```
-
-### 实现方式二：Fluent Builder（简单禁用）
-
-```python
-def extension(registry):
-    (
-        registry.extension("my_product")
-        .disable_features("builtin_qa_agent")
-        .disable_channels("discord")
-        .disable_providers("ollama")
-    )
-```
-
-### 实现方式三：装饰器（可读性强）
-
-```python
-from qwenpaw.extensions import FeaturePolicy, qwenpaw_extension
-
-extension = qwenpaw_extension("my_product")
-
-@extension.features
-def features() -> FeaturePolicy:
-    return FeaturePolicy(
-        disabled_features={"builtin_qa_agent"},
-        disabled_channels={"discord"},
-        disabled_providers={"ollama"},
-        disabled_plugins={"community-demo"},
-        allowed_plugins={"my-product-plugin"},
-    )
-```
-
-### 实现方式四：统一 API（插件或复杂扩展推荐）
-
-```python
-def extension(registry):
-    api = registry.adapters
-    api.disable_feature("builtin_qa_agent")
-    api.disable_channel("discord")
-    api.disable_provider("ollama")
-    api.disable_plugin("community-demo")
-    api.allow_plugin("my-product-plugin")
-    api.plugin_search_path("~/.myproduct/plugins")
-```
-
-### `FeaturePolicy` 字段完整说明
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `disabled_features` | `Iterable[str] | None` | 禁用通用 feature |
-| `disabled_channels` | `Iterable[str] | None` | 禁用 channel key |
-| `disabled_providers` | `Iterable[str] | None` | 禁用 provider id |
-| `disabled_plugins` | `Iterable[str] | None` | 禁用 plugin id |
-| `allowed_plugins` | `Iterable[str] | None` | 插件允许列表，非空时只允许列表内插件 |
-
-### `PluginPolicy` 字段完整说明
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `disabled_plugins` | `Iterable[str] | None` | 禁用 plugin id |
-| `allowed_plugins` | `Iterable[str] | None` | 插件允许列表 |
-| `extra_search_paths` | `Iterable[str | Path] | None` | 额外插件搜索路径 |
-
-## 九、CLI 命令扩展
-
-CLI 扩展通过懒加载命令实现，业务只声明模块路径和属性名。属性应是 Click command/group 对象。
-
-### 实现方式一：统一 API（推荐，最直观）
-
-```python
-def extension(registry):
-    api = registry.adapters
-    api.cli_command("diagnose", "my_product.cli.diagnose", "diagnose")
-    api.replace_cli_command("doctor", "my_product.cli.doctor", "doctor")
-    api.disable_cli_command("update")
-    api.cli_alias("models", "model")
-```
-
-### 实现方式二：Fluent Builder（适合少量新增命令）
-
-```python
-def extension(registry):
-    registry.extension("my_product").cli_command(
-        "diagnose",
-        "my_product.cli.diagnose",
-        "diagnose",
-    )
-```
-
-### 实现方式三：声明式 `CliPatch`（集中声明）
-
-```python
-from qwenpaw.extensions import CliCommandPatch, CliPatch, ExtensionSpec
-
-extension = ExtensionSpec(
-    name="my_product",
-    cli_patch=CliPatch(
-        add={
-            "diagnose": CliCommandPatch(
-                name="diagnose",
-                module="my_product.cli.diagnose",
-                attribute="diagnose",
-            )
-        },
-        replace={
-            "doctor": CliCommandPatch(
-                name="doctor",
-                module="my_product.cli.doctor",
-                attribute="doctor",
-            )
-        },
-        disable=frozenset({"update"}),
-        aliases={"models": "model"},
-    ),
-)
-```
-
-### Click 命令示例
-
-```python
-import click
-
-@click.command()
-def diagnose():
-    click.echo("ok")
-```
-
-### CLI 相关字段
-
-| 类 | 字段 | 类型 | 说明 |
-| --- | --- | --- | --- |
-| `CliCommandPatch` | `name` | `str` | 命令名 |
-| `CliCommandPatch` | `module` | `str` | Python 模块路径 |
-| `CliCommandPatch` | `attribute` | `str` | 模块中的 Click command 属性名 |
-| `CliPatch` | `add` | `dict[str, CliCommandPatch]` | 新增命令 |
-| `CliPatch` | `replace` | `dict[str, CliCommandPatch]` | 替换已有命令 |
-| `CliPatch` | `disable` | `frozenset[str]` | 禁用命令 |
-| `CliPatch` | `aliases` | `dict[str, str]` | 别名映射，key 是已有命令，value 是别名 |
-
-## 十、FastAPI 扩展和生命周期
-
-### 实现方式一：统一 API（推荐）
-
-```python
-from fastapi import APIRouter, FastAPI
-
-router = APIRouter()
-
-@router.get("/health")
-async def health():
-    return {"ok": True}
-
-def install_middleware(app: FastAPI) -> None:
-    app.state.my_product = True
-
-def on_startup() -> None:
-    print("startup")
-
-def extension(registry):
-    api = registry.adapters
-    api.router(router, prefix="/api/my-product", tags=["my-product"])
-    api.middleware_hook(install_middleware)
-    api.startup_hook(on_startup)
-```
-
-### 实现方式二：声明式 `AppPatch`
-
-```python
-from qwenpaw.extensions import AppPatch, ExtensionSpec, RouterSpec
-
-extension = ExtensionSpec(
-    name="my_product",
-    app_patch=AppPatch(
-        routers=(RouterSpec(router, prefix="/api/my-product", tags=["my-product"]),),
-        startup_hooks=(on_startup,),
-        shutdown_hooks=(on_shutdown,),
-        middleware_hooks=(install_middleware,),
-        before_include_routers=(before_include,),
-        after_include_routers=(after_include,),
-    ),
-)
-```
-
-### FastAPI 字段完整说明
-
-| 类 | 字段 | 类型 | 说明 |
-| --- | --- | --- | --- |
-| `RouterSpec` | `router` | `Any` | FastAPI `APIRouter` |
-| `RouterSpec` | `prefix` | `str` | include router 前缀 |
-| `RouterSpec` | `tags` | `list[str] | None` | OpenAPI tags |
-| `AppPatch` | `routers` | `tuple[Any, ...]` | router 或 `RouterSpec` 列表 |
-| `AppPatch` | `startup_hooks` | `tuple[Callable, ...]` | app startup hook |
-| `AppPatch` | `shutdown_hooks` | `tuple[Callable, ...]` | app shutdown hook |
-| `AppPatch` | `middleware_hooks` | `tuple[Callable[[FastAPI], Any], ...]` | middleware 安装 hook |
-| `AppPatch` | `before_include_routers` | `tuple[Callable[[FastAPI], Any], ...]` | QwenPaw include router 前 hook |
-| `AppPatch` | `after_include_routers` | `tuple[Callable[[FastAPI], Any], ...]` | QwenPaw include router 后 hook |
-
-## 十一、前端静态资源替换
-
-前端静态资源由 `ProductSpec.console_static_dir` 控制。QwenPaw 会优先使用扩展提供的目录。
-
-### 实现方式一：包内 manifest（推荐）
-
-```yaml
-product:
-  console_static_dir: ./console
-```
-
-配合：
-
-```toml
-[tool.setuptools.package-data]
-my_product = ["manifest.yaml", "console/**"]
-```
-
-### 实现方式二：API
-
-```python
-def extension(registry):
-    registry.extension("my_product").console_static_dir("/opt/myproduct/console")
-```
-
-### 实现方式三：声明式
-
-```python
-from dataclasses import replace
-from qwenpaw.extensions import get_extension_registry
-
-registry = get_extension_registry()
-registry.configure_product(
-    replace(
-        registry.product,
-        console_static_dir="/opt/myproduct/console",
-    )
-)
-```
-
-如果产品配置全部由同一个 `ProductSpec` 声明，也可以直接写在完整的 `ProductSpec` 中：
-
-```python
-from qwenpaw.extensions import ExtensionSpec, ProductSpec
-
-extension = ExtensionSpec(
-    name="my_product",
-    product=ProductSpec(
-        product_name="MyProduct",
-        module_alias="myproduct",
-        cli_name="myproduct",
-        env_prefixes=("MYPRODUCT", "QWENPAW", "COPAW"),
-        working_dir="~/.myproduct",
-        secret_dir="~/.myproduct.secret",
-        console_static_dir="/opt/myproduct/console",
-    ),
-)
-```
-
-## 十二、内置 channel 和 custom channel
-
-内置 channel 与 custom channel 是两种不同能力：
-
-1. 内置 channel：产品通过 Python 注册一类 channel，像 QwenPaw 自带 channel 一样参与注册表。
-2. custom channel：从目录中发现用户或业务放置的 channel 文件。
-
-### 实现方式一：统一 API 注册内置 channel（推荐）
-
-```python
-from qwenpaw.extensions import BuiltinChannelSpec
-from my_product.channels.workchat import WorkChatChannel, WorkChatConfig
-
-def extension(registry):
-    registry.adapters.builtin_channel(
-        BuiltinChannelSpec(
-            key="workchat",
-            factory=WorkChatChannel,
-            config_model=WorkChatConfig,
-            required=False,
-            default_enabled=True,
-            display_name="Work Chat",
-            metadata={"owner": "my-product"},
-        )
-    )
-```
-
-### 实现方式二：替换内置 channel
-
-```python
-def extension(registry):
-    registry.adapters.replace_builtin_channel(
-        BuiltinChannelSpec(
-            key="discord",
-            factory=MyDiscordChannel,
-            config_model=MyDiscordConfig,
-        )
-    )
-```
-
-### 实现方式三：声明式
-
-```python
-from qwenpaw.extensions import BuiltinChannelSpec, ExtensionSpec
-
-extension = ExtensionSpec(
-    name="my_product",
-    builtin_channels=(
-        BuiltinChannelSpec(
-            key="workchat",
-            factory=WorkChatChannel,
-            config_model=WorkChatConfig,
-            default_enabled=True,
-        ),
-    ),
-)
-```
-
-### 实现方式四：custom channel source
-
-```python
-def extension(registry):
-    registry.adapters.custom_channel_source("~/.myproduct/custom_channels")
-```
-
-也可通过 manifest 设置默认目录：
-
-```yaml
-product:
-  custom_channels_dir: ~/.myproduct/custom_channels
-```
-
-### `BuiltinChannelSpec` 字段完整说明
-
-| 字段 | 类型 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `key` | `str` | 必填 | channel 唯一 key |
-| `factory` | `Callable[..., Any]` | 必填 | channel 工厂或 channel 类 |
-| `config_model` | `type[Any] | None` | `None` | 配置模型 |
-| `required` | `bool` | `False` | 是否无视 `builtin_channels` feature 和禁用策略，始终注册 |
-| `default_enabled` | `bool` | `False` | 默认是否启用 |
-| `route_hook` | `Callable[..., Any] | None` | `None` | 路由挂载 hook |
-| `display_name` | `str | None` | `None` | 展示名 |
-| `metadata` | `dict[str, Any]` | `{}` | 扩展元数据 |
-
-## 十三、LLM Provider 扩展
-
-### 实现方式一：统一 API（推荐）
-
-```python
-from my_product.llm import MyProductProvider
-
-def extension(registry):
-    api = registry.adapters
-    api.provider("my-cloud", MyProductProvider)
-    api.replace_provider("openai", MyProductProvider)
-    api.disable_provider("ollama")
-```
-
-### 实现方式二：manifest 禁用 provider
-
-```yaml
-features:
-  disabled_providers:
-    - ollama
-    - openrouter
-```
-
-### 实现方式三：声明式
-
-```python
-from qwenpaw.extensions import ExtensionSpec, FeaturePolicy, ProviderPatch
-
-extension = ExtensionSpec(
-    name="my_product",
-    features=FeaturePolicy(disabled_providers={"ollama"}),
-    provider_patches=(
-        ProviderPatch("my-cloud", MyProductProvider),
-        ProviderPatch("openai", MyProductProvider, replace=True),
-    ),
-)
-```
-
-### `ProviderPatch` 字段完整说明
-
-| 字段 | 类型 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `provider_id` | `str` | 必填 | provider id |
-| `provider_cls` | `type[Any]` | 必填 | provider 类 |
-| `replace` | `bool` | `False` | `False` 为新增，`True` 为替换 |
-
-## 十四、插件扩展统一入口
-
-插件内部可以通过 `PluginApi.extensions` 获取同一套 `ExtensionAdapters`，因此插件不用自己 import 内部 registry。
-
-```python
-def setup(api):
-    ext = api.extensions
-    ext.disable_plugin("community-demo")
-    ext.plugin_search_path("~/.myproduct/plugins")
-    ext.cli_command("plugin-diagnose", "my_plugin.cli", "diagnose")
-```
-
-插件策略可通过 manifest 配置：
-
-```yaml
-plugins:
-  allowed_plugins:
-    - my-product-plugin
-  extra_search_paths:
-    - ~/.myproduct/plugins
-```
-
-## 十五、Skill 服务和 Control Command
-
-### Skill 服务
-
-适合业务代码或插件复用 QwenPaw 的 skill 服务能力。
-
-```python
-def extension(registry):
-    api = registry.adapters
-    skill_service = api.skill_service("~/.myproduct/agents/default")
-    pool_service = api.skill_pool_service()
-```
-
-### Control command
-
-适合给 runner 注册新的控制命令。
-
-```python
-class PauseCommand:
-    command_name = "pause"
-
-    async def handle(self, *args, **kwargs):
-        return "paused"
-
-def extension(registry):
-    api = registry.adapters
-    api.control_command(PauseCommand())
-```
-
-移除命令：
-
-```python
-def extension(registry):
-    registry.adapters.unregister_control_command("pause")
-```
-
-如果产品有额外的优先级注册表，也可以传入：
-
-```python
-api.control_command(
-    PauseCommand(),
-    priority="high",
-    priority_registry=my_priority_registry,
-)
-```
-
-### AgentRunner query handler hook（完全托管 query_handler）
-
-这个 hook 会在 QwenPaw 原生 `AgentRunner.query_handler` 逻辑之前执行。业务函数可以读取 `request`、`runner`、`workspace`、`msgs`、`kwargs`，并自行产出 `(msg, last)`。一旦某个 hook 返回非 `None` 结果，SDK 就认为本次 query 已由业务完全托管，不再执行 QwenPaw 原生 query 逻辑。
-
-返回值约定：
-
-1. 返回 `None`：不接管，继续尝试下一个 hook；如果没有 hook 接管，则走 QwenPaw 原生逻辑。
-2. 返回 async iterable：例如 async generator，逐条 yield `(msg, last)`。
-3. 返回 sync iterable：逐条 yield `(msg, last)`。
-4. 返回单个 `(msg, last)` tuple：只输出一条。
-
-注意：托管 hook 执行时 QwenPaw 原生 `QwenPawAgent` 还没有创建，所以 `context.agent` 为 `None`。如果业务需要 runner、workspace、request 中的数据，可以直接从 `context.runner`、`context.workspace`、`context.request` 读取。
-
-实现方式一：adapter API（推荐，最直接）
-
-```python
-async def handle_query(context):
-    request = context.request
-    session_id = getattr(request, "session_id", "")
-    user_id = getattr(request, "user_id", "")
-
-    if not should_use_business_runner(request):
-        return None
-
-    async def stream():
-        async for msg, last in business_query_handler(
-            msgs=context.msgs,
-            session_id=session_id,
-            user_id=user_id,
-            runner=context.runner,
-            workspace=context.workspace,
-            **context.kwargs,
-        ):
-            yield msg, last
-
-    return stream()
-
-def extension(registry):
-    registry.adapters.query_handler_hook(handle_query)
-```
-
-实现方式二：装饰器（推荐用于拆分业务函数）
-
-```python
-from qwenpaw.extensions import RunnerQueryContext, qwenpaw_extension
-
-extension = qwenpaw_extension("my_product")
-
-@extension.query_handler_hook
-async def handle_query(context: RunnerQueryContext):
-    if getattr(context.request, "channel", "") != "console":
-        return None
-    return business_query_handler(context.msgs, context.request)
-```
-
-实现方式三：声明式 `ExtensionSpec`（集中审计、便于复用）
-
-```python
-from qwenpaw.extensions import ExtensionSpec, RunnerPatch
-
-extension = ExtensionSpec(
-    name="my_product",
-    runner_patch=RunnerPatch(
-        query_handler_hooks=(handle_query,),
-    ),
-)
-```
-
-如果业务完全托管 query handler，SDK 不会再自动调用 query stream hooks。业务需要在自己的 handler 中自行观察、统计或上报输出。
-
-### AgentRunner query stream hooks（推荐，贴近 QwenPaw 原生流式逻辑）
-
-这组 hook 包裹 QwenPaw 原生 query 末尾的流式输出，适合做审计、指标、耗时统计、旁路消息记录。它只观察 `run_mission_phase1`、`run_mission_phase2` 和 `_stream_printing_messages_interruptible` 产出的结果，对齐业务直接改源码时常见的写法：
-
-```python
-tracker = await start_stats(...)
-async for msg, last in ...:
-    await tracker.observe_message(msg, last)
-    yield msg, last
-await tracker.finish(...)
-```
-
-业务可以注册三类 hook：
-
-| hook | 调用时机 | 典型用途 |
-| --- | --- | --- |
-| `before_query_stream_hook(context)` | 原生最终流式输出开始前 | 创建 tracker、trace、统计上下文，并写入 `context.state` |
-| `query_stream_message_hook(context, msg, last)` | 每条被观察的 `(msg, last)` 产出前 | 观察消息、记录指标、旁路上报 |
-| `after_query_stream_hook(context, error)` | 原生最终流式输出结束后 | flush、close、失败上报。`error=None` 表示正常结束 |
-
-`context.state` 是同一次 query stream hooks 共享的 dict。推荐在 `before_query_stream_hook` 中初始化业务对象，在 `query_stream_message_hook` 和 `after_query_stream_hook` 中复用。
-
-它不会观察以下输出：
-
-1. `query_handler_hook` 完全托管后的业务输出。业务托管后应由业务自己观察。
-2. command path 提前返回的输出，例如 `/approval` 等命令。
-3. `/mission` 命令解析阶段提前返回的提示。
-4. skill 信息展示等提前返回的 display-only 输出。
-
-hook 函数可以读取：
-
-| 字段 | 说明 |
+| 已移除能力 | 替代建议 |
 | --- | --- |
-| `context.request` | `query_handler` 的 `request` 入参，可读取 `session_id`、`user_id`、`channel`、`channel_meta` 等 |
-| `context.runner` | 当前 `AgentRunner` 实例 |
-| `context.agent` | 当前 query 内创建的 `QwenPawAgent` |
-| `context.workspace` | 当前 workspace 实例，可读取 `agent_id`、`workspace_dir`、`memory_manager`、`context_manager` 等 |
-| `context.msgs` | 原始 `msgs` 入参 |
-| `context.kwargs` | 原始 `kwargs` 的只读映射 |
-| `context.state` | 本次 query stream hooks 共享的状态字典 |
-
-`before_query_stream_hook` 可以直接修改 `context.state`，也可以返回一个 dict，SDK 会自动 merge 到 `context.state`。如果返回非 dict、非 `None` 的对象，SDK 会放到 `context.state["value"]`。
-
-注意：这是观察型 hook，不能通过返回值改写 `msg` 或 `last`。业务代码应避免原地修改 `msg`。
-
-实现方式一：adapter API（推荐，最直接）
-
-```python
-async def before_stream(context):
-    context.state["tracker"] = await start_query_stats(
-        agent_id=getattr(context.workspace, "agent_id", ""),
-        session_id=getattr(context.request, "session_id", ""),
-        user_id=getattr(context.request, "user_id", ""),
-        channel=getattr(context.request, "channel", ""),
-        agent=context.agent,
-    )
-
-async def on_stream_message(context, msg, last):
-    await context.state["tracker"].observe_message(msg, last)
-
-async def after_stream(context, error):
-    await context.state["tracker"].finish(error=error)
-
-def extension(registry):
-    registry.adapters.before_query_stream_hook(before_stream)
-    registry.adapters.query_stream_message_hook(on_stream_message)
-    registry.adapters.after_query_stream_hook(after_stream)
-```
-
-实现方式二：装饰器（推荐用于把 hook 拆成独立函数）
-
-```python
-from qwenpaw.extensions import RunnerQueryContext, qwenpaw_extension
-
-extension = qwenpaw_extension("my_product")
-
-@extension.before_query_stream_hook
-async def before_stream(context: RunnerQueryContext):
-    return {
-        "tracker": await start_query_stats(
-            request=context.request,
-            agent=context.agent,
-            workspace=context.workspace,
-        )
-    }
-
-@extension.query_stream_message_hook
-async def on_stream_message(context: RunnerQueryContext, msg, last):
-    await context.state["tracker"].observe_message(msg, last)
-
-@extension.after_query_stream_hook
-async def after_stream(context: RunnerQueryContext, error):
-    await context.state["tracker"].finish(
-        request=context.request,
-        error=error,
-    )
-```
-
-实现方式三：声明式 `ExtensionSpec`（集中审计、便于复用）
-
-```python
-from qwenpaw.extensions import ExtensionSpec, RunnerPatch
-
-def before_stream(context):
-    context.state["started"] = True
-
-def on_stream_message(context, msg, last):
-    ...
-
-def after_stream(context, error):
-    ...
-
-extension = ExtensionSpec(
-    name="my_product",
-    runner_patch=RunnerPatch(
-        before_query_stream_hooks=(before_stream,),
-        query_stream_message_hooks=(on_stream_message,),
-        after_query_stream_hooks=(after_stream,),
-    ),
-)
-```
-
-## 十六、品牌化运行时文案和 restore 文件
-
-这部分多数情况下自动生效。SDK 会根据 `ProductSpec` 做以下替换：
-
-| 原内容 | 替换为 |
-| --- | --- |
-| `QwenPaw` | `product.product_name` |
-| `qwenpaw` | `product.module_alias` |
-| `QWENPAW` | `product.env_prefixes[0]` |
-| `~/.qwenpaw` | `product.working_dir` 的友好显示 |
-
-自动覆盖范围包括：
-
-1. CLI group 和 subcommand help。
-2. click 输出中的常见 QwenPaw 文案。
-3. `init` 安全提示和 telemetry 提示。
-4. Provider 提示中的本地 provider 名和 CLI 命令。
-5. restore lock/state 等内部文件名，例如 `.myproduct_restore.lock`。
-
-可手动使用的 API：
-
-```python
-from qwenpaw.extensions import (
-    brand_text,
-    cli_invocation,
-    product_local_provider_name,
-    restore_artifact_name,
-)
-
-brand_text("Run qwenpaw models config")
-cli_invocation("models", "config")          # myproduct models config
-product_local_provider_name()               # MyProduct Local
-restore_artifact_name(".lock")              # .myproduct_restore.lock
-```
-
-## 十七、声明式 `ExtensionSpec` 完整说明
-
-`ExtensionSpec` 适合把多个扩展能力集中成一个对象，便于审计、测试和跨产品复用。
-
-| 字段 | 类型 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `name` | `str` | 必填 | 扩展名 |
-| `product` | `ProductSpec | None` | `None` | 产品配置 |
-| `logging` | `LoggingSpec | None` | `None` | 日志配置。若为空且有 product，会自动用 `LoggingSpec.from_product(product)` |
-| `features` | `FeaturePolicy` | `FeaturePolicy()` | 功能开关 |
-| `plugin_policy` | `PluginPolicy` | `PluginPolicy()` | 插件策略 |
-| `cli_patch` | `CliPatch` | `CliPatch()` | CLI patch |
-| `app_patch` | `AppPatch` | `AppPatch()` | FastAPI patch |
-| `runner_patch` | `RunnerPatch` | `RunnerPatch()` | AgentRunner hook patch |
-| `provider_patches` | `tuple[ProviderPatch, ...]` | `()` | Provider patch |
-| `builtin_channels` | `tuple[BuiltinChannelSpec, ...]` | `()` | 内置 channel |
-
-`RunnerPatch` 字段：
-
-| 字段 | 类型 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `query_handler_hooks` | `tuple[Callable[..., Any], ...]` | `()` | 完全托管 `AgentRunner.query_handler` 的业务处理函数。第一个返回非 `None` 的 hook 会接管本次 query |
-| `before_query_stream_hooks` | `tuple[Callable[..., Any], ...]` | `()` | QwenPaw 原生最终流式输出开始前调用 |
-| `query_stream_message_hooks` | `tuple[Callable[..., Any], ...]` | `()` | QwenPaw 原生最终流式输出每条 `(msg, last)` 产出前调用 |
-| `after_query_stream_hooks` | `tuple[Callable[..., Any], ...]` | `()` | QwenPaw 原生最终流式输出结束后调用，接收 `error` |
-
-完整示例：
-
-```python
-from qwenpaw.extensions import (
-    AppPatch,
-    BuiltinChannelSpec,
-    CliCommandPatch,
-    CliPatch,
-    ExtensionSpec,
-    FeaturePolicy,
-    LoggingSpec,
-    PluginPolicy,
-    ProductSpec,
-    ProviderPatch,
-    RouterSpec,
-    RunnerPatch,
-)
-
-def handle_query(context):
-    return None
-
-def before_stream(context):
-    context.state["tracker"] = start_query_stats(
-        request=context.request,
-        agent=context.agent,
-        workspace=context.workspace,
-    )
-
-def on_stream_message(context, msg, last):
-    context.state["tracker"].observe_message(msg, last)
-
-def after_stream(context, error):
-    context.state["tracker"].finish(error=error)
-
-extension = ExtensionSpec(
-    name="my_product",
-    product=ProductSpec(
-        product_name="MyProduct",
-        module_alias="myproduct",
-        cli_name="myproduct",
-        env_prefixes=("MYPRODUCT", "QWENPAW", "COPAW"),
-        working_dir="~/.myproduct",
-        secret_dir="~/.myproduct.secret",
-        console_static_dir="/opt/myproduct/console",
-    ),
-    logging=LoggingSpec(
-        namespace="myproduct",
-        file_path="~/.myproduct/logs/runtime.log",
-    ),
-    features=FeaturePolicy(
-        disabled_features={"builtin_qa_agent"},
-        disabled_channels={"discord"},
-        disabled_providers={"ollama"},
-    ),
-    plugin_policy=PluginPolicy(extra_search_paths=("~/.myproduct/plugins",)),
-    cli_patch=CliPatch(
-        add={
-            "diagnose": CliCommandPatch(
-                name="diagnose",
-                module="my_product.cli.diagnose",
-                attribute="diagnose",
-            )
-        }
-    ),
-    app_patch=AppPatch(routers=(RouterSpec(router, prefix="/api/my-product"),)),
-    runner_patch=RunnerPatch(
-        query_handler_hooks=(handle_query,),
-        before_query_stream_hooks=(before_stream,),
-        query_stream_message_hooks=(on_stream_message,),
-        after_query_stream_hooks=(after_stream,),
-    ),
-    provider_patches=(ProviderPatch("my-cloud", MyProductProvider),),
-    builtin_channels=(BuiltinChannelSpec("workchat", WorkChatChannel),),
-)
-```
-
-## 十八、测试和调试
-
-### 使用独立 registry 测试
-
-```python
-from qwenpaw.extensions import ExtensionRegistry, ProductSpec, use_extension_registry
-
-def test_product_config():
-    registry = ExtensionRegistry()
-    registry.configure_product(ProductSpec(product_name="MyProduct"))
-
-    with use_extension_registry(registry):
-        assert registry.product.product_name == "MyProduct"
-```
-
-### 手动加载 manifest
-
-```python
-from qwenpaw.extensions import ExtensionRegistry, load_extensions
-
-registry = ExtensionRegistry()
-load_extensions(
-    registry=registry,
-    config_path="tests/fixtures/myproduct.yaml",
-    include_entry_points=False,
-)
-```
-
-### 检查当前 registry
-
-```python
-from qwenpaw.extensions import get_extension_registry
-
-registry = get_extension_registry()
-print(registry.product)
-print(registry.features)
-print(registry.cli.added)
-```
-
-## 十九、完整 Demo 示例
-
-下面示例展示一个业务产品如何把 manifest、包内前端资源、装饰器、CLI、FastAPI、provider、channel、插件策略串起来。
-
-### 目录结构
-
-```text
-my_product/
-  pyproject.toml
-  src/my_product/
-    __init__.py
-    cli.py
-    manifest.yaml
-    extension.py
-    console/
-      index.html
-    api.py
-    commands.py
-    llm.py
-    channels/
-      workchat.py
-```
-
-### pyproject.toml
-
-```toml
-[build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
-
-[project]
-name = "my-product"
-version = "2.0.0"
-dependencies = ["qwenpaw==1.1.9b1"]
-
-[project.scripts]
-myproduct = "my_product.cli:main"
-
-[project.entry-points."qwenpaw.extension_manifests"]
-my_product = "my_product:manifest.yaml"
-
-[project.entry-points."qwenpaw.extensions"]
-my_product = "my_product.extension:extension"
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.setuptools.package-data]
-my_product = ["manifest.yaml", "console/**"]
-```
-
-### src/my_product/manifest.yaml
-
-```yaml
-product:
-  name: MyProduct
-  version: 2.0.0
-  module_alias: myproduct
-  cli_name: myproduct
-  skill_cli_name: myproduct-skills
-  env_prefixes: [MYPRODUCT, QWENPAW, COPAW]
-  working_dir: ~/.myproduct
-  secret_dir: ~/.myproduct.secret
-  backup_dir: ~/.myproduct/backups
-  plugins_dir: ~/.myproduct/plugins
-  custom_channels_dir: ~/.myproduct/custom_channels
-  media_dir: ~/.myproduct/media
-  local_provider_dir: ~/.myproduct/local_models
-  console_static_dir: ./console
-  agent_prompt_files:
-    - MY_PRODUCT.md
-    - AGENTS.md
-    - SOUL.md
-    - PROFILE.md
-
-logging:
-  namespace: myproduct
-  file_path: ~/.myproduct/logs/runtime.log
-  format: "%(asctime)s %(levelname)s [%(name)s] %(message)s"
-  level: INFO
-
-features:
-  disabled_features:
-    - builtin_qa_agent
-  disabled_channels:
-    - discord
-  disabled_providers:
-    - ollama
-
-plugins:
-  extra_search_paths:
-    - ~/.myproduct/plugins
-```
-
-### src/my_product/cli.py
-
-```python
-def main() -> None:
-    from qwenpaw.extensions import load_extensions
-
-    load_extensions(force=True)
-
-    from qwenpaw.cli.main import cli
-
-    cli()
-```
-
-### src/my_product/api.py
-
-```python
-from fastapi import APIRouter
-
-router = APIRouter()
-
-@router.get("/health")
-async def health() -> dict[str, bool]:
-    return {"ok": True}
-```
-
-### src/my_product/commands.py
-
-```python
-import click
-
-@click.command()
-def diagnose() -> None:
-    click.echo("MyProduct diagnose ok")
-```
-
-### src/my_product/llm.py
-
-```python
-class MyProductProvider:
-    provider_id = "my-cloud"
-```
-
-实际 provider 类应实现 QwenPaw provider 所需接口。
-
-### src/my_product/channels/workchat.py
-
-```python
-class WorkChatConfig:
-    pass
-
-class WorkChatChannel:
-    pass
-```
-
-实际 channel 类应实现 QwenPaw channel 所需接口。
-
-### src/my_product/extension.py
-
-```python
-from qwenpaw.extensions import BuiltinChannelSpec, qwenpaw_extension
-
-from my_product.api import router
-from my_product.channels.workchat import WorkChatChannel, WorkChatConfig
-from my_product.llm import MyProductProvider
-
-extension = qwenpaw_extension("my_product")
-
-@extension.configure
-def configure(context) -> None:
-    api = context.adapters
-
-    api.router(router, prefix="/api/my-product", tags=["my-product"])
-
-    api.cli_command(
-        "diagnose",
-        "my_product.commands",
-        "diagnose",
-    )
-    api.cli_alias("models", "model")
-    api.disable_cli_command("update")
-
-    api.provider("my-cloud", MyProductProvider)
-    api.disable_provider("ollama")
-
-    api.builtin_channel(
-        BuiltinChannelSpec(
-            key="workchat",
-            factory=WorkChatChannel,
-            config_model=WorkChatConfig,
-            default_enabled=True,
-            display_name="Work Chat",
-        )
-    )
-
-    api.plugin_search_path("~/.myproduct/plugins")
-
-
-@extension.before_query_stream_hook
-async def before_stream(context):
-    context.state["tracker"] = await start_query_stats(
-        request=context.request,
-        agent=context.agent,
-        workspace=context.workspace,
-    )
-
-@extension.query_stream_message_hook
-async def on_stream_message(context, msg, last):
-    await context.state["tracker"].observe_message(msg, last)
-
-@extension.after_query_stream_hook
-async def after_stream(context, error):
-    await context.state["tracker"].finish(error=error)
-```
-
-### 构建和验证
-
-```powershell
-python -m pip wheel . -w dist --no-deps
-python -m pip install dist\my_product-2.0.0-py3-none-any.whl
-
-myproduct -h
-myproduct init --defaults
-myproduct app --host 0.0.0.0 --port 18789
-```
-
-预期效果：
-
-1. CLI help 显示 `myproduct` 和 `MyProduct`。
-2. 工作目录使用 `~/.myproduct`。
-3. 环境变量优先读取 `MYPRODUCT_*`，再回落到 `QWENPAW_*` 和 `COPAW_*`。
-4. 前端静态资源从包内 `my_product/console` 提供。
-5. `diagnose` 命令可用，`update` 命令被禁用，`model` 是 `models` 的别名。
-6. `my-cloud` provider 注册成功，`ollama` provider 被禁用。
-7. `workchat` 内置 channel 注册成功。
-8. restore lock 文件名使用 `.myproduct_restore.lock`。
-9. QwenPaw 原生最终流式输出可被 query stream hooks 包裹，mission phase 和标准 agent stream 的输出会调用 `on_stream_message(context, msg, last)`。
+| 日志配置 | 使用 QwenPaw 原生日志行为或业务进程外日志采集 |
+| 插件策略 | 使用 QwenPaw 原生插件目录和插件机制 |
+| CLI 命令增删改 | 业务项目提供自己的 entry point 脚本 |
+| FastAPI 路由扩展 | 业务通过独立服务或完全托管入口实现 |
+| LLM Provider 增删改 | 使用 QwenPaw 原生 provider 配置能力 |
+| Skill 服务入口 | 业务不要通过 Extension SDK 直接访问内部 service |
+| Control command | 使用 QwenPaw 原生控制命令机制 |
+| 环境变量前缀替换 | 固定使用 `QWENPAW_*`，保留 `COPAW_*` 作为 legacy fallback |

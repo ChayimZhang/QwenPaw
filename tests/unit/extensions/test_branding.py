@@ -22,7 +22,6 @@ def test_brand_text_uses_product_spec(tmp_path: Path) -> None:
             product_name="MyProduct",
             module_alias="myproduct",
             cli_name="myproduct",
-            env_prefixes=("MYPRODUCT", "QWENPAW"),
             working_dir=tmp_path / ".myproduct",
         )
     )
@@ -30,7 +29,7 @@ def test_brand_text_uses_product_spec(tmp_path: Path) -> None:
     with use_extension_registry(registry):
         assert (
             brand_text("QwenPaw uses qwenpaw and QWENPAW under ~/.qwenpaw")
-            == "MyProduct uses myproduct and MYPRODUCT under ~/.myproduct"
+            == "MyProduct uses myproduct and QWENPAW under ~/.myproduct"
         )
         assert cli_invocation("models", "config") == "myproduct models config"
         assert product_local_provider_name() == "MyProduct Local"

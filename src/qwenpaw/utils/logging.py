@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 
 from ..constant import WORKING_DIR
-from ..extensions.logging import resolve_logging_spec
 
 # Rotating file handler limits (idempotent add avoids duplicate handlers)
 _LOG_MAX_BYTES = 5 * 1024 * 1024  # 5 MiB
@@ -24,18 +23,14 @@ _LEVEL_MAP = {
     "debug": logging.DEBUG,
 }
 
-_LOGGING_SPEC = resolve_logging_spec()
-
 # Top-level name for this package; only loggers under this name are shown.
-LOG_NAMESPACE = _LOGGING_SPEC.namespace
+LOG_NAMESPACE = "qwenpaw"
 
 # Canonical log file name and path — import these instead of reconstructing.
 LOG_FILE_BASENAME = f"{LOG_NAMESPACE}.log"
-LOG_FILE_PATH = (
-    Path(_LOGGING_SPEC.file_path)
-    if _LOGGING_SPEC.file_path is not None
-    else WORKING_DIR / LOG_FILE_BASENAME
-)
+LOG_FILE_PATH = WORKING_DIR / LOG_FILE_BASENAME
+
+_LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 
 def _enable_windows_ansi() -> None:
@@ -160,7 +155,7 @@ class SuppressPathAccessLogFilter(logging.Filter):
 
 def setup_logger(level: int | str = logging.INFO):
     """Configure logging to only output from this package, not deps."""
-    log_format = _LOGGING_SPEC.format
+    log_format = _LOG_FORMAT
     datefmt = "%Y-%m-%d %H:%M:%S"
 
     if isinstance(level, str):
@@ -185,16 +180,12 @@ def setup_logger(level: int | str = logging.INFO):
     logger.setLevel(level)
     logger.propagate = False
     if not logger.handlers:
-        if _LOGGING_SPEC.handler_factory is not None:
-            for handler in _LOGGING_SPEC.create_handlers():
-                logger.addHandler(handler)
-        else:
-            # Use sys.stderr directly. Wrapping sys.stderr.buffer in a
-            # TextIOWrapper takes ownership of the buffer and closes it on GC,
-            # which corrupts sys.stderr for subsequent tests/code.
-            handler = logging.StreamHandler(sys.stderr)
-            handler.setFormatter(formatter)
-            logger.addHandler(handler)
+        # Use sys.stderr directly. Wrapping sys.stderr.buffer in a
+        # TextIOWrapper takes ownership of the buffer and closes it on GC,
+        # which corrupts sys.stderr for subsequent tests/code.
+        handler = logging.StreamHandler(sys.stderr)
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
 
     return logger
 
@@ -231,6 +222,6 @@ def add_project_file_handler(log_path: Path) -> None:
     file_handler.setLevel(logger.level or logging.INFO)
 
     file_handler.setFormatter(
-        PlainFormatter(_LOGGING_SPEC.format, "%Y-%m-%d %H:%M:%S"),
+        PlainFormatter(_LOG_FORMAT, "%Y-%m-%d %H:%M:%S"),
     )
     logger.addHandler(file_handler)

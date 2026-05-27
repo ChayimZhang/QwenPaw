@@ -24,11 +24,10 @@ def test_constant_uses_extension_product_paths(tmp_path):
             product_name="MyProduct",
             product_version="2.0.0",
             module_alias="my_product",
-            env_prefixes=("MYPRODUCT", "QWENPAW", "COPAW"),
             working_dir=tmp_path / "work",
             secret_dir=tmp_path / "secret",
         )
-        )
+    )
 
     try:
         constant = _reload_constant_with(registry)
@@ -36,7 +35,7 @@ def test_constant_uses_extension_product_paths(tmp_path):
         assert constant.MODULE_NAME == "my_product"
         assert constant.PROJECT_NAME == "MyProduct"
         assert constant.PROJECT_VERSION == "2.0.0"
-        assert constant.RELOAD_MODE_ENV == "MYPRODUCT_RELOAD_MODE"
+        assert constant.RELOAD_MODE_ENV == "QWENPAW_RELOAD_MODE"
         assert constant.WORKING_DIR == tmp_path / "work"
         assert constant.SECRET_DIR == tmp_path / "secret"
         assert constant.CUSTOM_CHANNELS_DIR == tmp_path / "work" / "custom_channels"
@@ -46,33 +45,27 @@ def test_constant_uses_extension_product_paths(tmp_path):
         _restore_default_constant()
 
 
-def test_constant_env_prefix_priority(tmp_path, monkeypatch):
+def test_constant_env_prefix_uses_qwenpaw_then_legacy(tmp_path, monkeypatch):
     monkeypatch.setenv("MYPRODUCT_WORKING_DIR", str(tmp_path / "business"))
     monkeypatch.setenv("QWENPAW_WORKING_DIR", str(tmp_path / "qwenpaw"))
     registry = ExtensionRegistry()
-    registry.configure_product(
-        ProductSpec(env_prefixes=("MYPRODUCT", "QWENPAW", "COPAW"))
-    )
 
     try:
         constant = _reload_constant_with(registry)
 
-        assert constant.WORKING_DIR == tmp_path / "business"
+        assert constant.WORKING_DIR == tmp_path / "qwenpaw"
     finally:
         monkeypatch.delenv("MYPRODUCT_WORKING_DIR", raising=False)
         monkeypatch.delenv("QWENPAW_WORKING_DIR", raising=False)
         _restore_default_constant()
 
 
-def test_constant_uses_business_prefixed_log_level_env_key():
+def test_constant_uses_qwenpaw_log_level_env_key():
     registry = ExtensionRegistry()
-    registry.configure_product(
-        ProductSpec(env_prefixes=("MYPRODUCT", "QWENPAW", "COPAW"))
-    )
 
     try:
         constant = _reload_constant_with(registry)
 
-        assert constant.LOG_LEVEL_ENV == "MYPRODUCT_LOG_LEVEL"
+        assert constant.LOG_LEVEL_ENV == "QWENPAW_LOG_LEVEL"
     finally:
         _restore_default_constant()

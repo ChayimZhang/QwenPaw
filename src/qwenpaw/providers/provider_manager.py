@@ -1076,15 +1076,10 @@ class ProviderManager:  # pylint: disable=too-many-public-methods
                 pass
 
     def _init_builtins(self):
-        from qwenpaw.extensions import get_extension_registry, load_extensions
+        from qwenpaw.extensions import load_extensions
 
         load_extensions()
-        extension_registry = get_extension_registry()
-        providers = extension_registry.providers.apply_policy(
-            self._default_builtin_providers(),
-            extension_registry.features,
-        )
-        for provider_id, provider in providers.items():
+        for provider_id, provider in self._default_builtin_providers().items():
             self._add_builtin(
                 self._coerce_builtin_provider(provider_id, provider),
             )

@@ -54,16 +54,11 @@ def _tmp_dir(dst: Path) -> Path:
     return dst.with_name(dst.name + _RESTORE_TMP_SUFFIX)
 
 
-def test_restore_lock_timeout_prefers_product_env_prefix(monkeypatch) -> None:
-    registry = ExtensionRegistry()
-    registry.configure_product(
-        ProductSpec(env_prefixes=("MYPRODUCT", "QWENPAW", "COPAW"))
-    )
+def test_restore_lock_timeout_uses_qwenpaw_env_prefix(monkeypatch) -> None:
     monkeypatch.setenv("MYPRODUCT_RESTORE_LOCK_TIMEOUT_SECONDS", "7")
     monkeypatch.setenv("QWENPAW_RESTORE_LOCK_TIMEOUT_SECONDS", "3")
 
-    with use_extension_registry(registry):
-        assert safe_swap_module._restore_lock_timeout_seconds() == 7.0
+    assert safe_swap_module._restore_lock_timeout_seconds() == 3.0
 
 
 def test_restore_lock_file_name_uses_product_module_alias(tmp_path: Path) -> None:

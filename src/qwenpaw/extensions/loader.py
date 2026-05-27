@@ -12,13 +12,11 @@ from weakref import WeakSet
 import yaml
 
 from qwenpaw.extensions.config import apply_manifest, apply_manifest_resource
-from qwenpaw.extensions.env import EnvResolver
 from qwenpaw.extensions.registry import ExtensionRegistry, get_extension_registry
-from qwenpaw.extensions.specs import ExtensionSpec, ProductSpec
+from qwenpaw.extensions.specs import ExtensionSpec
 
 _LOADED_REGISTRIES: WeakSet[ExtensionRegistry] = WeakSet()
 
-_EXTENSION_CONFIG_SUFFIX = "_EXTENSION_CONFIG"
 _EXTENSION_MANIFEST_ENTRY_POINT_GROUP = "qwenpaw.extension_manifests"
 _AUTO_MANIFEST_NAMES = (
     "manifest.yaml",
@@ -28,7 +26,7 @@ _AUTO_MANIFEST_NAMES = (
     "qwenpaw-extension.yaml",
     "qwenpaw-extension.yml",
 )
-_MANIFEST_ROOT_KEYS = {"product", "logging", "features", "plugins"}
+_MANIFEST_ROOT_KEYS = {"product", "features"}
 
 
 def _iter_manifest_search_dirs(search_paths: Iterable[str | Path] | None) -> Iterable[Path]:
@@ -79,28 +77,11 @@ def discover_extension_manifest(
 
 
 def _bootstrap_config_path(target: ExtensionRegistry) -> str | None:
-    if target.product != ProductSpec():
-        return EnvResolver(target.product).get("EXTENSION_CONFIG")
-
-    product_candidates: list[tuple[str, str]] = []
-    fallback_candidates: list[tuple[str, str]] = []
-    for name, value in os.environ.items():
-        normalized = name.upper()
-        if not normalized.endswith(_EXTENSION_CONFIG_SUFFIX) or not value:
-            continue
-        prefix = normalized[: -len(_EXTENSION_CONFIG_SUFFIX)]
-        if prefix in target.product.env_prefixes:
-            fallback_candidates.append((normalized, value))
-        else:
-            product_candidates.append((normalized, value))
-
-    if product_candidates:
-        return sorted(product_candidates)[0][1]
-
-    for name in EnvResolver(target.product).names("EXTENSION_CONFIG"):
-        for candidate_name, value in fallback_candidates:
-            if candidate_name == name:
-                return value
+    _ = target
+    for name in ("QWENPAW_EXTENSION_CONFIG", "COPAW_EXTENSION_CONFIG"):
+        value = os.environ.get(name)
+        if value:
+            return value
     return None
 
 

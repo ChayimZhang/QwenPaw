@@ -28,8 +28,7 @@ from ..constant import (
     PROJECT_NAME,
     PROJECT_VERSION,
 )
-from ..extensions import get_extension_registry
-from ..extensions.logging import resolve_log_level
+from ..envs.resolver import EnvResolver
 from ..__version__ import __version__
 from ..backup._utils.safe_swap import cleanup_startup_restore_artifacts
 from ..utils.logging import (
@@ -56,9 +55,8 @@ from .migration import (
 from .channels.registry import register_custom_channel_routes
 from ..utils.console_static import resolve_console_static_dir
 
-_EXTENSION_REGISTRY = get_extension_registry()
 # Apply log level on load so reload child process gets same level as CLI.
-logger = setup_logger(resolve_log_level("info"))
+logger = setup_logger(EnvResolver().get("LOG_LEVEL", "info"))
 
 # Ensure static assets are served with browser-compatible MIME types across
 # platforms (notably Windows may miss .js/.mjs mappings).
@@ -221,17 +219,6 @@ agent_app = AgentApp(
 )
 
 
-async def _run_extension_hooks(hooks, phase: str) -> None:
-    for hook in hooks:
-        try:
-            result = hook()
-            if inspect.iscoroutine(result) or inspect.isawaitable(result):
-                await result
-        except Exception:
-            logger.error("Extension %s hook failed", phase, exc_info=True)
-            raise
-
-
 @asynccontextmanager
 async def lifespan(  # pylint: disable=too-many-statements,too-many-branches
     app: FastAPI,
@@ -312,11 +299,6 @@ async def lifespan(  # pylint: disable=too-many-statements,too-many-branches
         return await multi_agent_manager.get_agent(agent_id)
 
     app.state.get_agent_by_id = _get_agent_by_id
-    await _run_extension_hooks(
-        _EXTENSION_REGISTRY.app.startup_hooks,
-        "startup",
-    )
-
     fast_elapsed = time.time() - startup_start_time
     logger.info(
         f"Server ready in {fast_elapsed:.3f}s "
@@ -492,11 +474,6 @@ async def lifespan(  # pylint: disable=too-many-statements,too-many-branches
             with suppress(asyncio.CancelledError):
                 await _bg_task
 
-        await _run_extension_hooks(
-            _EXTENSION_REGISTRY.app.shutdown_hooks,
-            "shutdown",
-        )
-
         # ==================== Execute Shutdown Hooks ====================
         plugin_registry = getattr(app.state, "plugin_registry", None)
         if plugin_registry is not None:
@@ -600,8 +577,6 @@ if CORS_ORIGINS:
         expose_headers=["Content-Disposition"],
     )
 
-_EXTENSION_REGISTRY.app.apply_middleware(app)
-
 _CONSOLE_STATIC_DIR = resolve_console_static_dir()
 _CONSOLE_INDEX = (
     Path(_CONSOLE_STATIC_DIR) / "index.html" if _CONSOLE_STATIC_DIR else None
@@ -622,10 +597,6 @@ def read_root():
             "web console."
         ),
     }
-
-
-for hook in _EXTENSION_REGISTRY.app.before_include_routers:
-    hook(app)
 
 
 @app.get("/api/version")
@@ -668,9 +639,6 @@ app.include_router(voice_router, tags=["voice"])
 
 # Custom channel routes (before SPA catch-all to ensure route priority)
 register_custom_channel_routes(app)
-_EXTENSION_REGISTRY.app.apply_routers(app)
-for hook in _EXTENSION_REGISTRY.app.after_include_routers:
-    hook(app)
 
 # Console static files and SPA fallback
 # Register these AFTER API routes to ensure proper routing priority

@@ -1,14 +1,11 @@
-import json
-
-from qwenpaw.extensions import ExtensionRegistry, FeaturePolicy, PluginPolicy
+from qwenpaw.extensions import ExtensionRegistry, FeaturePolicy
 from qwenpaw.extensions.features import (
     EXTENSION_FEATURES,
-    iter_plugin_search_paths,
     is_feature_enabled,
     should_create_builtin_qa_agent,
-    should_load_plugin,
+    should_load_builtin_channel,
+    should_load_custom_channels,
 )
-from qwenpaw.plugins.loader import PluginLoader
 
 
 def test_builtin_qa_agent_policy_defaults_to_enabled():
@@ -33,7 +30,7 @@ def test_feature_catalog_exposes_known_disable_switches():
     assert "plugins" in keys
     assert "builtin_channels" in keys
     assert "custom_channels" in keys
-    assert "fastapi_extension_routers" in keys
+    assert "fastapi_extension_routers" not in keys
 
 
 def test_generic_feature_gate_respects_catalog():
@@ -44,64 +41,20 @@ def test_generic_feature_gate_respects_catalog():
     assert is_feature_enabled("builtin_qa_agent", registry) is True
 
 
-def test_plugin_loading_feature_gate_disables_all_plugins():
+def test_builtin_channel_policy_respects_required_flag():
     registry = ExtensionRegistry()
-    registry.configure_features(FeaturePolicy(disabled_features={"plugins"}))
-
-    assert should_load_plugin(registry, "any-plugin") is False
-
-
-def test_plugin_policy_disabled_name_wins():
-    registry = ExtensionRegistry()
-    registry.configure_features(FeaturePolicy(disabled_plugins={"qwenpaw-pet"}))
-
-    assert should_load_plugin(registry, "qwenpaw-pet") is False
-
-
-def test_plugin_policy_allowed_list_blocks_others():
-    registry = ExtensionRegistry()
-    registry.configure_features(FeaturePolicy(allowed_plugins={"core-plugin"}))
-
-    assert should_load_plugin(registry, "core-plugin") is True
-    assert should_load_plugin(registry, "other-plugin") is False
-
-
-def test_plugin_policy_exposes_extra_search_paths(tmp_path):
-    registry = ExtensionRegistry()
-    registry.configure_plugins(
-        PluginPolicy(extra_search_paths=(tmp_path / "plugins",))
+    registry.configure_features(
+        FeaturePolicy(disabled_features={"builtin_channels"})
     )
 
-    assert list(iter_plugin_search_paths(registry)) == [tmp_path / "plugins"]
+    assert should_load_builtin_channel(registry, "wechat") is False
+    assert should_load_builtin_channel(registry, "console", required=True) is True
 
 
-def test_plugin_loader_includes_extra_search_paths(tmp_path, extension_registry):
-    extra_dir = tmp_path / "extension_plugins"
-    extension_registry.configure_plugins(PluginPolicy(extra_search_paths=(extra_dir,)))
-
-    loader = PluginLoader([])
-
-    assert loader.plugin_dirs == [extra_dir]
-
-
-def test_plugin_loader_skips_disabled_plugins(tmp_path, extension_registry):
-    plugin_root = tmp_path / "plugins"
-    plugin_dir = plugin_root / "blocked-plugin"
-    plugin_dir.mkdir(parents=True)
-    (plugin_dir / "plugin.json").write_text(
-        json.dumps(
-            {
-                "id": "blocked-plugin",
-                "name": "Blocked Plugin",
-                "version": "1.0.0",
-                "entry": {"frontend": "index.js"},
-            }
-        ),
-        encoding="utf-8",
+def test_custom_channels_can_be_disabled():
+    registry = ExtensionRegistry()
+    registry.configure_features(
+        FeaturePolicy(disabled_features={"custom_channels"})
     )
-    extension_registry.configure_features(
-        FeaturePolicy(disabled_plugins={"blocked-plugin"})
-    )
-    loader = PluginLoader([plugin_root])
 
-    assert loader.discover_plugins() == []
+    assert should_load_custom_channels(registry) is False
