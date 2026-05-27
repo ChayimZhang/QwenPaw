@@ -28,7 +28,6 @@ from qwenpaw.backup._utils.safe_swap import (
     commit_tmp,
     extract_to_tmp,
 )
-from qwenpaw.extensions import ExtensionRegistry, ProductSpec, use_extension_registry
 
 _RESTORE_TMP_SUFFIX = ".restore_tmp"
 
@@ -59,20 +58,6 @@ def test_restore_lock_timeout_uses_qwenpaw_env_prefix(monkeypatch) -> None:
     monkeypatch.setenv("QWENPAW_RESTORE_LOCK_TIMEOUT_SECONDS", "3")
 
     assert safe_swap_module._restore_lock_timeout_seconds() == 3.0
-
-
-def test_restore_lock_file_name_uses_product_module_alias(tmp_path: Path) -> None:
-    registry = ExtensionRegistry()
-    registry.configure_product(
-        ProductSpec(
-            product_name="MyProduct",
-            module_alias="myproduct",
-            working_dir=tmp_path,
-        )
-    )
-
-    with use_extension_registry(registry):
-        assert safe_swap_module._restore_lock_file_name() == ".myproduct_restore.lock"
 
 
 @pytest.fixture(name="secrets_dir")

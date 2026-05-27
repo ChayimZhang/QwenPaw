@@ -45,21 +45,15 @@ RESERVED_NAMES = frozenset(
 
 
 def _old_content_dir_name() -> str:
-    from ...extensions import restore_artifact_name
-
-    return restore_artifact_name("_old")
+    return OLD_CONTENT_DIR_NAME
 
 
 def _state_file_name() -> str:
-    from ...extensions import restore_artifact_name
-
-    return restore_artifact_name("_state")
+    return STATE_FILE_NAME
 
 
 def _state_tmp_file_name() -> str:
-    from ...extensions import restore_artifact_name
-
-    return restore_artifact_name("_state.tmp")
+    return STATE_TMP_FILE_NAME
 
 
 def _reserved_names() -> frozenset[str]:

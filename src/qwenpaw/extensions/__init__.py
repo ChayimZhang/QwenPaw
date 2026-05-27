@@ -1,10 +1,6 @@
 """Public extension SDK exports."""
 
 from qwenpaw.extensions.adapters import ExtensionAdapters
-from qwenpaw.extensions.branding import (
-    legacy_restore_artifact_names,
-    restore_artifact_name,
-)
 from qwenpaw.extensions.channels import ChannelExtensionRegistry
 from qwenpaw.extensions.config import (
     apply_manifest,
@@ -62,9 +58,7 @@ __all__ = [
     "discover_extension_manifest",
     "get_extension_registry",
     "is_feature_enabled",
-    "legacy_restore_artifact_names",
     "load_extensions",
-    "restore_artifact_name",
     "should_create_builtin_qa_agent",
     "should_load_builtin_channel",
     "should_load_custom_channels",
