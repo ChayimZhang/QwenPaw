@@ -26,7 +26,7 @@ QwenPaw 原生代码只在少量稳定入口读取 registry：
 | 入口 | 作用 |
 | --- | --- |
 | `qwenpaw.constant` | 读取产品名、模块名、目录配置 |
-| CLI 根命令 | 读取产品名、CLI 名、版本、skill CLI alias |
+| CLI 根命令 | 读取产品名、CLI 名、版本 |
 | channel registry | 读取内置 channel 和 custom channel source |
 | AgentRunner | 执行 query handler 托管与 query stream hooks |
 | console static | 读取 `ProductSpec.console_static_dir` |
@@ -42,7 +42,6 @@ QwenPaw 原生代码只在少量稳定入口读取 registry：
 | AgentRunner query handler 托管 | 业务完全接管 `AgentRunner.query_handler` | `runner.py` / `RunnerQueryContext` | API、声明式、装饰器 |
 | AgentRunner query stream hooks | 观察 QwenPaw 原生最终流式输出 | `runner.py` / `RunnerQueryContext` | API、声明式、装饰器 |
 | 前端静态资源替换 | 指定业务 console 静态资源目录 | `app.py` / `resolve_console_static_dir` | manifest、API、声明式 |
-| 品牌化文案 | 替换常见 QwenPaw 产品名、模块名、用户目录文案 | `branding.py` | 自动、API |
 
 ## 三、manifest.yaml
 
@@ -66,7 +65,6 @@ product:
   version: 2.0.0
   module_alias: my_product
   cli_name: myproduct
-  skill_cli_name: myproduct-skills
   working_dir: ~/.myproduct
   secret_dir: ~/.myproduct.secret
   console_static_dir: ./console
@@ -91,7 +89,6 @@ manifest 使用增量覆盖语义：后加载的 manifest 只更新显式声明�
 | `version` | `product_version` | string 或 null | `None` | 产品版本 |
 | `module_alias` | `module_alias` | string | `qwenpaw` | 模块别名，用于部分文案和内部文件名 |
 | `cli_name` | `cli_name` | string | `qwenpaw` | CLI 根命令名 |
-| `skill_cli_name` | `skill_cli_name` | string 或 null | `None` | skills 命令别名 |
 | `working_dir` | `working_dir` | path | `~/.qwenpaw` | 用户工作目录 |
 | `secret_dir` | `secret_dir` | path | `~/.qwenpaw.secret` | secret 目录 |
 | `backup_dir` | `backup_dir` | path 或 null | `<working_dir>/backups` | 备份目录 |
@@ -106,7 +103,7 @@ manifest 使用增量覆盖语义：后加载的 manifest 只更新显式声明�
 
 | YAML 字段 | `FeaturePolicy` 字段 | 类型 | 说明 |
 | --- | --- | --- | --- |
-| `disabled_features` | `disabled_features` | string list | 禁用通用功能，例如 `builtin_qa_agent`、`plugins`、`builtin_channels`、`custom_channels` |
+| `disabled_features` | `disabled_features` | string list | 禁用通用功能，例如 `builtin_qa_agent`、`builtin_channels`、`custom_channels` |
 | `disabled_channels` | `disabled_channels` | string list | 禁用指定 channel |
 
 ## 四、Python API
@@ -280,7 +277,6 @@ product:
   name: MyProduct
   module_alias: my_product
   cli_name: myproduct
-  skill_cli_name: myproduct-skills
   working_dir: ~/.myproduct
   secret_dir: ~/.myproduct.secret
   console_static_dir: ./console

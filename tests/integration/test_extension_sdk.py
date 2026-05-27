@@ -29,7 +29,6 @@ def test_extension_sdk_smoke_registers_remaining_runtime_surfaces(tmp_path):
             product_version="2.0.0",
             module_alias="my_product",
             cli_name="myproduct",
-            skill_cli_name="myproduct-skills",
             working_dir=tmp_path / "work",
             secret_dir=tmp_path / "secret",
             console_static_dir=console_dir,

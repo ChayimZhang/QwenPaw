@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any
 
 from ...exceptions import SkillsError
-from ...envs.resolver import EnvResolver
 from ..utils.file_handling import read_text_file_with_encoding_fallback
 from .models import (
     BuiltinSkillIdentity,
@@ -252,8 +251,9 @@ def _skill_config_env_var_name(skill_name: str) -> str:
         char if char.isalnum() else "_"
         for char in str(skill_name or "").upper()
     ]
-    suffix = f"SKILL_CONFIG_{''.join(normalized).strip('_') or 'DEFAULT'}"
-    return EnvResolver().key(suffix)
+    return (
+        f"QWENPAW_SKILL_CONFIG_{''.join(normalized).strip('_') or 'DEFAULT'}"
+    )
 
 
 def _build_skill_config_env_overrides(

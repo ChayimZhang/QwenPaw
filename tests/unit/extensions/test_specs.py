@@ -25,7 +25,6 @@ def test_product_spec_defaults_expand_paths_under_working_dir():
     assert spec.media_dir == spec.working_dir / "media"
     assert spec.local_provider_dir == spec.working_dir / "local_models"
     assert spec.product_version is None
-    assert spec.skill_cli_name is None
     assert spec.console_static_dir is None
     assert spec.agent_prompt_files == ("AGENTS.md", "SOUL.md", "PROFILE.md")
 

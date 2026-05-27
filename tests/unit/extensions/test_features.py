@@ -27,7 +27,6 @@ def test_feature_catalog_exposes_known_disable_switches():
     keys = {feature.key for feature in EXTENSION_FEATURES}
 
     assert "builtin_qa_agent" in keys
-    assert "plugins" in keys
     assert "builtin_channels" in keys
     assert "custom_channels" in keys
     assert "fastapi_extension_routers" not in keys
@@ -35,10 +34,12 @@ def test_feature_catalog_exposes_known_disable_switches():
 
 def test_generic_feature_gate_respects_catalog():
     registry = ExtensionRegistry()
-    registry.configure_features(FeaturePolicy(disabled_features={"plugins"}))
+    registry.configure_features(
+        FeaturePolicy(disabled_features={"builtin_qa_agent"})
+    )
 
-    assert is_feature_enabled("plugins", registry) is False
-    assert is_feature_enabled("builtin_qa_agent", registry) is True
+    assert is_feature_enabled("builtin_qa_agent", registry) is False
+    assert is_feature_enabled("custom_channels", registry) is True
 
 
 def test_builtin_channel_policy_respects_required_flag():

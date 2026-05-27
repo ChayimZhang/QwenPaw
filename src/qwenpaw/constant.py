@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
+import os
 from pathlib import Path
 from dotenv import load_dotenv
 
 from qwenpaw.extensions import get_extension_registry, load_extensions
-from qwenpaw.envs.resolver import EnvResolver
 
 # Load .env file from project root before reading any env vars
 _env_path = Path(__file__).resolve().parent.parent.parent / ".env"
@@ -14,14 +14,21 @@ _EXTENSION_REGISTRY = get_extension_registry()
 _PRODUCT = _EXTENSION_REGISTRY.product
 _DEFAULT_PRODUCT = type(_PRODUCT)()
 _USES_DEFAULT_PRODUCT = _PRODUCT == _DEFAULT_PRODUCT
-_ENV = EnvResolver()
 
 
 def _get_env(key: str, default: str = "") -> str:
-    """Look up an env var across product, QwenPaw, and legacy prefixes."""
-    value = _ENV.get(key)
-    if value is not None:
-        return value
+    """Look up an env var with automatic COPAW_ legacy fallback.
+
+    Primary key is always used as-is.  When the primary key starts with
+    ``QWENPAW_``, the corresponding ``COPAW_`` variant is transparently
+    checked as a fallback so that existing deployments keep working.
+    """
+    if key in os.environ:
+        return os.environ[key]
+    if key.startswith("QWENPAW_"):
+        legacy_key = "COPAW_" + key[len("QWENPAW_") :]
+        if legacy_key in os.environ:
+            return os.environ[legacy_key]
     return default
 
 
@@ -90,7 +97,7 @@ class EnvVarLoader:
 # 1. QWENPAW_WORKING_DIR env var, then COPAW_WORKING_DIR fallback.
 # 2. ~/.copaw exists in the default product profile (legacy installation).
 # 3. ProductSpec.working_dir.
-_explicit_working_dir = _get_env("WORKING_DIR")
+_explicit_working_dir = _get_env("QWENPAW_WORKING_DIR")
 if _explicit_working_dir:
     WORKING_DIR = Path(_explicit_working_dir).expanduser().resolve()
 elif not _USES_DEFAULT_PRODUCT:
@@ -101,7 +108,7 @@ else:
         WORKING_DIR = _legacy_copaw_dir.resolve()
     else:
         WORKING_DIR = Path(_PRODUCT.working_dir).expanduser().resolve()
-_explicit_secret_dir = _get_env("SECRET_DIR")
+_explicit_secret_dir = _get_env("QWENPAW_SECRET_DIR")
 if _explicit_secret_dir:
     SECRET_DIR = Path(_explicit_secret_dir).expanduser().resolve()
 elif not _USES_DEFAULT_PRODUCT:
@@ -199,8 +206,8 @@ DEBUG_HISTORY_FILE = EnvVarLoader.get_str(
 MAX_LOAD_HISTORY_COUNT = 10000
 
 # Env key for app log level (used by CLI and app load for reload child).
-LOG_LEVEL_ENV = _ENV.key("LOG_LEVEL")
-RELOAD_MODE_ENV = _ENV.key("RELOAD_MODE")
+LOG_LEVEL_ENV = "QWENPAW_LOG_LEVEL"
+RELOAD_MODE_ENV = "QWENPAW_RELOAD_MODE"
 
 # Env to indicate running inside a container (e.g. Docker). Set to 1/true/yes.
 RUNNING_IN_CONTAINER = EnvVarLoader.get_bool(

@@ -41,15 +41,12 @@ _record("..config.utils", time.perf_counter() - _t)
 
 _t = time.perf_counter()
 from ..extensions import (  # noqa: E402
-    brand_click_command,
     get_extension_registry,
-    install_click_output_branding,
     load_extensions,
 )
 
 load_extensions()
 _EXTENSION_REGISTRY = get_extension_registry()
-install_click_output_branding()
 _record("..extensions", time.perf_counter() - _t)
 
 _t = time.perf_counter()
@@ -94,7 +91,6 @@ class LazyGroup(click.Group):
             try:
                 module = __import__(module_path, fromlist=[attr_name])
                 cmd = getattr(module, attr_name)
-                brand_click_command(cmd, product=_EXTENSION_REGISTRY.product)
                 _record(label, time.perf_counter() - _t)
                 # Cache for next time
                 self.add_command(cmd, cmd_name)
@@ -157,19 +153,11 @@ _DEFAULT_LAZY_SUBCOMMANDS = {
 }
 
 
-def _extension_lazy_subcommands():
-    commands = dict(_DEFAULT_LAZY_SUBCOMMANDS)
-    skill_cli_name = _EXTENSION_REGISTRY.product.skill_cli_name
-    if skill_cli_name and "skills" in commands:
-        commands.setdefault(skill_cli_name, commands["skills"])
-    return commands
-
-
 @click.group(
     cls=LazyGroup,
     name=_EXTENSION_REGISTRY.product.cli_name,
     context_settings={"help_option_names": ["-h", "--help"]},
-    lazy_subcommands=_extension_lazy_subcommands(),
+    lazy_subcommands=_DEFAULT_LAZY_SUBCOMMANDS,
 )
 @click.version_option(
     version=_EXTENSION_REGISTRY.product.product_version or __version__,
@@ -199,6 +187,3 @@ def cli(ctx: click.Context, host: str | None, port: int | None) -> None:
     ctx.ensure_object(dict)
     ctx.obj["host"] = host
     ctx.obj["port"] = port
-
-
-brand_click_command(cli, product=_EXTENSION_REGISTRY.product)

@@ -46,7 +46,7 @@ def test_constant_uses_extension_product_paths(tmp_path):
 
 
 def test_constant_env_prefix_uses_qwenpaw_then_legacy(tmp_path, monkeypatch):
-    monkeypatch.setenv("MYPRODUCT_WORKING_DIR", str(tmp_path / "business"))
+    monkeypatch.setenv("COPAW_WORKING_DIR", str(tmp_path / "legacy"))
     monkeypatch.setenv("QWENPAW_WORKING_DIR", str(tmp_path / "qwenpaw"))
     registry = ExtensionRegistry()
 
@@ -55,7 +55,7 @@ def test_constant_env_prefix_uses_qwenpaw_then_legacy(tmp_path, monkeypatch):
 
         assert constant.WORKING_DIR == tmp_path / "qwenpaw"
     finally:
-        monkeypatch.delenv("MYPRODUCT_WORKING_DIR", raising=False)
+        monkeypatch.delenv("COPAW_WORKING_DIR", raising=False)
         monkeypatch.delenv("QWENPAW_WORKING_DIR", raising=False)
         _restore_default_constant()
 

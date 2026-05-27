@@ -39,7 +39,6 @@ class ProductSpec:
     working_dir: str | Path = "~/.qwenpaw"
     secret_dir: str | Path = "~/.qwenpaw.secret"
     product_version: str | None = None
-    skill_cli_name: str | None = None
     backup_dir: str | Path | None = None
     plugins_dir: str | Path | None = None
     custom_channels_dir: str | Path | None = None

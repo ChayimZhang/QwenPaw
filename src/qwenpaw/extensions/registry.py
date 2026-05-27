@@ -115,7 +115,6 @@ class ExtensionBuilder:
             "product_version": product.product_version,
             "module_alias": name,
             "cli_name": product.cli_name,
-            "skill_cli_name": product.skill_cli_name,
             "working_dir": product.working_dir,
             "secret_dir": product.secret_dir,
             "backup_dir": _explicit_product_path(
@@ -148,18 +147,12 @@ class ExtensionBuilder:
         name: str,
         version: str | None = None,
         cli_name: str | None = None,
-        skill_cli_name: str | None = None,
     ) -> "ExtensionBuilder":
         self._product_kwargs.update(
             {
                 "product_name": name,
                 "product_version": version,
                 "cli_name": cli_name or self.registry.product.cli_name,
-                "skill_cli_name": (
-                    skill_cli_name
-                    if skill_cli_name is not None
-                    else self.registry.product.skill_cli_name
-                ),
             }
         )
         self._apply_product()
@@ -177,11 +170,6 @@ class ExtensionBuilder:
 
     def console_static_dir(self, path: str | Path) -> "ExtensionBuilder":
         self._product_kwargs["console_static_dir"] = path
-        self._apply_product()
-        return self
-
-    def skill_cli_name(self, name: str) -> "ExtensionBuilder":
-        self._product_kwargs["skill_cli_name"] = name
         self._apply_product()
         return self
 

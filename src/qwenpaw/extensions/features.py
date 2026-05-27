@@ -1,4 +1,4 @@
-"""Feature and plugin policy helpers."""
+"""Feature policy helpers."""
 
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ class ExtensionFeature:
 
 EXTENSION_FEATURES: tuple[ExtensionFeature, ...] = (
     ExtensionFeature("builtin_qa_agent", "Create the packaged QA agent"),
-    ExtensionFeature("plugins", "Discover and load plugins"),
     ExtensionFeature("builtin_channels", "Register non-required built-in channels"),
     ExtensionFeature("custom_channels", "Discover channels from custom source dirs"),
 )

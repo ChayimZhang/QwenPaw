@@ -54,7 +54,6 @@ from ..constant import (
     WORKING_DIR,
     EnvVarLoader,
 )
-from ..envs.resolver import EnvResolver
 from ..utils.logging import LOG_FILE_BASENAME
 from ..utils.system_info import summarize_python_environment
 from ..providers.provider import Provider
@@ -214,15 +213,12 @@ def environment_summary_lines(
             + (server_python_note or "(unknown)"),
         )
     lines.append(f"working_dir: {WORKING_DIR}")
-    env_resolver = EnvResolver()
-    for env_name in env_resolver.names("WORKING_DIR"):
-        env_value = os.getenv(env_name)
-        if env_value:
-            suffix = "env"
-            if env_name != env_resolver.key("WORKING_DIR"):
-                suffix = "env fallback"
-            lines.append(f"{env_name} ({suffix}): {env_value}")
-            break
+    wd_qp = os.getenv("QWENPAW_WORKING_DIR")
+    wd_legacy = os.getenv("COPAW_WORKING_DIR")
+    if wd_qp:
+        lines.append(f"QWENPAW_WORKING_DIR (env): {wd_qp}")
+    elif wd_legacy:
+        lines.append(f"COPAW_WORKING_DIR (env, legacy): {wd_legacy}")
     lines.append(f"sqlite library: {sqlite3.sqlite_version}")
     try:
         ver_tuple = tuple(

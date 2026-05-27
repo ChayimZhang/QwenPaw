@@ -17,7 +17,6 @@ from typing import Dict, List, Optional, Tuple
 from .architecture import PluginManifest, PluginRecord
 from .api import PluginApi
 from .registry import PluginRegistry
-from ..extensions import load_extensions
 
 logger = logging.getLogger(__name__)
 
@@ -31,29 +30,9 @@ class PluginLoader:
         Args:
             plugin_dirs: List of directories to search for plugins
         """
-        load_extensions()
-        self.plugin_dirs = self._dedupe_plugin_dirs(
-            [Path(d) for d in plugin_dirs]
-        )
+        self.plugin_dirs = [Path(d) for d in plugin_dirs]
         self.registry = PluginRegistry()
         self._loaded_plugins: Dict[str, PluginRecord] = {}
-
-    @staticmethod
-    def _dedupe_plugin_dirs(plugin_dirs: List[Path]) -> List[Path]:
-        out: List[Path] = []
-        seen: set[str] = set()
-        for plugin_dir in plugin_dirs:
-            path = Path(plugin_dir).expanduser()
-            try:
-                path = path.resolve()
-            except OSError:
-                pass
-            key = str(path).casefold() if os.name == "nt" else str(path)
-            if key in seen:
-                continue
-            seen.add(key)
-            out.append(path)
-        return out
 
     def discover_plugins(self) -> List[Tuple[PluginManifest, Path]]:
         """Discover all plugins in plugin directories.

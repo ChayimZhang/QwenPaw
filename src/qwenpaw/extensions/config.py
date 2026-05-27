@@ -27,7 +27,6 @@ _PRODUCT_FIELD_MAP = {
     "version": "product_version",
     "module_alias": "module_alias",
     "cli_name": "cli_name",
-    "skill_cli_name": "skill_cli_name",
     "working_dir": "working_dir",
     "secret_dir": "secret_dir",
     "backup_dir": "backup_dir",

@@ -2,15 +2,7 @@
 
 from qwenpaw.extensions.adapters import ExtensionAdapters
 from qwenpaw.extensions.branding import (
-    brand_click_command,
-    brand_text,
-    branding_replacements,
-    cli_invocation,
-    friendly_path,
-    install_click_output_branding,
     legacy_restore_artifact_names,
-    product_cli_name,
-    product_local_provider_name,
     restore_artifact_name,
 )
 from qwenpaw.extensions.channels import ChannelExtensionRegistry
@@ -52,9 +44,6 @@ __all__ = [
     "apply_manifest",
     "apply_manifest_data",
     "apply_manifest_resource",
-    "brand_click_command",
-    "brand_text",
-    "branding_replacements",
     "BuiltinChannelSpec",
     "ChannelExtensionRegistry",
     "EXTENSION_FEATURES",
@@ -70,16 +59,11 @@ __all__ = [
     "RunnerQueryContext",
     "RunnerPatch",
     "extension_registry",
-    "cli_invocation",
     "discover_extension_manifest",
-    "friendly_path",
     "get_extension_registry",
-    "install_click_output_branding",
     "is_feature_enabled",
     "legacy_restore_artifact_names",
     "load_extensions",
-    "product_cli_name",
-    "product_local_provider_name",
     "restore_artifact_name",
     "should_create_builtin_qa_agent",
     "should_load_builtin_channel",

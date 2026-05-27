@@ -8,7 +8,7 @@ import platform
 import sys
 from pathlib import Path
 
-from ..constant import WORKING_DIR
+from ..constant import PROJECT_NAME, WORKING_DIR
 
 # Rotating file handler limits (idempotent add avoids duplicate handlers)
 _LOG_MAX_BYTES = 5 * 1024 * 1024  # 5 MiB
@@ -24,13 +24,11 @@ _LEVEL_MAP = {
 }
 
 # Top-level name for this package; only loggers under this name are shown.
-LOG_NAMESPACE = "qwenpaw"
+LOG_NAMESPACE = PROJECT_NAME.lower()
 
 # Canonical log file name and path — import these instead of reconstructing.
 LOG_FILE_BASENAME = f"{LOG_NAMESPACE}.log"
 LOG_FILE_PATH = WORKING_DIR / LOG_FILE_BASENAME
-
-_LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 
 def _enable_windows_ansi() -> None:
@@ -155,7 +153,7 @@ class SuppressPathAccessLogFilter(logging.Filter):
 
 def setup_logger(level: int | str = logging.INFO):
     """Configure logging to only output from this package, not deps."""
-    log_format = _LOG_FORMAT
+    log_format = "%(asctime)s | %(message)s"
     datefmt = "%Y-%m-%d %H:%M:%S"
 
     if isinstance(level, str):
@@ -222,6 +220,6 @@ def add_project_file_handler(log_path: Path) -> None:
     file_handler.setLevel(logger.level or logging.INFO)
 
     file_handler.setFormatter(
-        PlainFormatter(_LOG_FORMAT, "%Y-%m-%d %H:%M:%S"),
+        PlainFormatter("%(asctime)s | %(message)s", "%Y-%m-%d %H:%M:%S"),
     )
     logger.addHandler(file_handler)
