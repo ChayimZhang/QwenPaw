@@ -43,29 +43,6 @@ RESERVED_NAMES = frozenset(
     },
 )
 
-
-def _old_content_dir_name() -> str:
-    return OLD_CONTENT_DIR_NAME
-
-
-def _state_file_name() -> str:
-    return STATE_FILE_NAME
-
-
-def _state_tmp_file_name() -> str:
-    return STATE_TMP_FILE_NAME
-
-
-def _reserved_names() -> frozenset[str]:
-    return frozenset(
-        {
-            _old_content_dir_name(),
-            _state_file_name(),
-            _state_tmp_file_name(),
-            *RESERVED_NAMES,
-        },
-    )
-
 _VALID_STATES = frozenset(
     {
         STATE_EVACUATING_OLD,
@@ -99,7 +76,7 @@ def is_rename_blocked(exc: OSError) -> bool:
 def should_skip_restore_internal_path(rel_path: str) -> bool:
     """Return True when a relative restore path targets internals."""
     parts = Path(rel_path).parts
-    if not parts or parts[0] not in _reserved_names():
+    if not parts or parts[0] not in RESERVED_NAMES:
         return False
     logger.warning("Skipping reserved restore path in backup: %s", rel_path)
     return True
@@ -155,8 +132,7 @@ def swap_mount_point_contents(dst: Path, tmp_dst: Path) -> None:
 
 def _swap_mount_point_contents(dst: Path, tmp_dst: Path) -> None:
     """Implementation of mount-point content swap."""
-    reserved_names = _reserved_names()
-    old_dir = dst / _old_content_dir_name()
+    old_dir = dst / OLD_CONTENT_DIR_NAME
     if old_dir.exists():
         raise RuntimeError(
             "Reserved restore directory exists before restore starts: "
@@ -165,10 +141,10 @@ def _swap_mount_point_contents(dst: Path, tmp_dst: Path) -> None:
 
     _write_state(dst, STATE_EVACUATING_OLD)
     old_dir.mkdir()
-    _move_children(dst, old_dir, excluded_names=reserved_names)
+    _move_children(dst, old_dir, excluded_names=RESERVED_NAMES)
 
     _write_state(dst, STATE_INSTALLING_NEW)
-    _move_children(tmp_dst, dst, excluded_names=reserved_names)
+    _move_children(tmp_dst, dst, excluded_names=RESERVED_NAMES)
 
     _write_state(dst, STATE_COMMITTED)
     _cleanup_artifacts(dst, tmp_dst)
@@ -184,9 +160,9 @@ def recover_mount_point_swap(dst: Path, tmp_dst: Path) -> None:
     any old children that had already been evacuated.  Markerless old-content
     directories are left untouched because they are not proven restore state.
     """
-    old_dir = dst / _old_content_dir_name()
-    has_marker = (dst / _state_file_name()).exists() or (
-        dst / _state_tmp_file_name()
+    old_dir = dst / OLD_CONTENT_DIR_NAME
+    has_marker = (dst / STATE_FILE_NAME).exists() or (
+        dst / STATE_TMP_FILE_NAME
     ).exists()
 
     if not (old_dir.exists() or has_marker):
@@ -236,10 +212,10 @@ def _rollback_installing_new(
     dst: Path,
     tmp_dst: Path,
 ) -> None:
-    old_dir = dst / _old_content_dir_name()
+    old_dir = dst / OLD_CONTENT_DIR_NAME
     restored = False
     if old_dir.exists():
-        _remove_children(dst, excluded_names=_reserved_names())
+        _remove_children(dst, excluded_names=RESERVED_NAMES)
         _restore_old_content(dst)
         restored = True
     else:
@@ -255,8 +231,8 @@ def _rollback_installing_new(
 
 
 def _write_state(dst: Path, state: str) -> None:
-    marker = dst / _state_file_name()
-    tmp_marker = dst / _state_tmp_file_name()
+    marker = dst / STATE_FILE_NAME
+    tmp_marker = dst / STATE_TMP_FILE_NAME
     try:
         tmp_marker.write_text(state, encoding="utf-8")
         with open(tmp_marker, "r+b") as handle:
@@ -283,7 +259,7 @@ def _write_state(dst: Path, state: str) -> None:
 
 
 def _read_state(dst: Path) -> str | None:
-    marker = dst / _state_file_name()
+    marker = dst / STATE_FILE_NAME
     try:
         state = marker.read_text(encoding="utf-8").strip()
     except OSError as exc:
@@ -301,7 +277,7 @@ def _read_state(dst: Path) -> str | None:
 
 
 def _cleanup_artifacts(dst: Path, tmp_dst: Path) -> None:
-    old_dir = dst / _old_content_dir_name()
+    old_dir = dst / OLD_CONTENT_DIR_NAME
     if old_dir.exists():
         shutil.rmtree(old_dir)
     _remove_tmp_and_state_markers(dst, tmp_dst)
@@ -310,12 +286,12 @@ def _cleanup_artifacts(dst: Path, tmp_dst: Path) -> None:
 def _remove_tmp_and_state_markers(dst: Path, tmp_dst: Path) -> None:
     if tmp_dst.exists():
         shutil.rmtree(tmp_dst)
-    (dst / _state_tmp_file_name()).unlink(missing_ok=True)
-    (dst / _state_file_name()).unlink(missing_ok=True)
+    (dst / STATE_TMP_FILE_NAME).unlink(missing_ok=True)
+    (dst / STATE_FILE_NAME).unlink(missing_ok=True)
 
 
 def _restore_old_content(dst: Path) -> None:
-    old_dir = dst / _old_content_dir_name()
+    old_dir = dst / OLD_CONTENT_DIR_NAME
     if old_dir.exists():
         _move_children(old_dir, dst)
         shutil.rmtree(old_dir)
