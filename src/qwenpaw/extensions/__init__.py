@@ -41,6 +41,7 @@ from qwenpaw.extensions.features import (
 from qwenpaw.extensions.loader import discover_extension_manifest, load_extensions
 from qwenpaw.extensions.logging import resolve_log_level, resolve_logging_spec
 from qwenpaw.extensions.providers import ProviderExtensionRegistry
+from qwenpaw.extensions.runner import RunnerExtensionRegistry, RunnerQueryContext
 from qwenpaw.extensions.specs import (
     AppPatch,
     BuiltinChannelSpec,
@@ -52,6 +53,7 @@ from qwenpaw.extensions.specs import (
     PluginPolicy,
     ProductSpec,
     ProviderPatch,
+    RunnerPatch,
 )
 from qwenpaw.extensions.registry import (
     ExtensionRegistry,
@@ -90,6 +92,9 @@ __all__ = [
     "ProviderExtensionRegistry",
     "RouterRegistration",
     "RouterSpec",
+    "RunnerExtensionRegistry",
+    "RunnerQueryContext",
+    "RunnerPatch",
     "extension_registry",
     "cli_invocation",
     "discover_extension_manifest",

@@ -101,6 +101,18 @@ class ExtensionAdapters:
     def logging(self, **changes: Any) -> None:
         self.registry.update_logging(**changes)
 
+    def before_query_stream_hook(self, hook: Any) -> None:
+        self.registry.runner.add_before_query_stream_hook(hook)
+
+    def query_stream_message_hook(self, hook: Any) -> None:
+        self.registry.runner.add_query_stream_message_hook(hook)
+
+    def after_query_stream_hook(self, hook: Any) -> None:
+        self.registry.runner.add_after_query_stream_hook(hook)
+
+    def query_handler_hook(self, hook: Any) -> None:
+        self.registry.runner.add_query_handler_hook(hook)
+
     def skill_service(self, workspace_dir: str | Path):
         from qwenpaw.agents.skill_system.workspace_service import SkillService
 

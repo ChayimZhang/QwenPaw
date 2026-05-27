@@ -166,6 +166,31 @@ class AgentRunner(Runner):
         """
         self._workspace = workspace
 
+    async def _query_handler_result(
+        self,
+        *,
+        request: AgentRequest | None,
+        msgs: Any,
+        kwargs: dict[str, Any],
+    ) -> Any | None:
+        from ...extensions import get_extension_registry
+
+        return await get_extension_registry().runner.get_query_handler_result(
+            request=request,
+            runner=self,
+            workspace=self._workspace,
+            msgs=msgs,
+            kwargs=kwargs,
+        )
+
+    async def _iter_query_handler_result(self, result: Any):
+        from ...extensions import get_extension_registry
+
+        async for item in get_extension_registry().runner.iter_query_handler_result(
+            result
+        ):
+            yield item
+
     @staticmethod
     def _parse_skill_query(
         query: str,
@@ -364,6 +389,18 @@ class AgentRunner(Runner):
             f"AgentRunner.query_handler called: agent_id={self.agent_id}, "
             f"msgs={msgs}, request={request}",
         )
+        delegated_result = await self._query_handler_result(
+            request=request,
+            msgs=msgs,
+            kwargs=kwargs,
+        )
+        if delegated_result is not None:
+            async for msg, last in self._iter_query_handler_result(
+                delegated_result
+            ):
+                yield msg, last
+            return
+
         query = _get_last_user_text(msgs)
         session_id = getattr(request, "session_id", "") or ""
 
@@ -809,6 +846,9 @@ class AgentRunner(Runner):
             agent.rebuild_sys_prompt()
 
             # --- Execution: Mission Mode (phased) or standard -----
+            from ...extensions import get_extension_registry
+
+            query_stream_lifecycle = get_extension_registry().runner.query_stream_lifecycle
             if mission_info is not None:
                 from ...agents.mission.mission_runner import (
                     run_mission_phase1,
@@ -822,30 +862,49 @@ class AgentRunner(Runner):
                     20,
                 )
 
-                if phase == 1:
-                    async for msg, last in run_mission_phase1(
-                        agent=agent,
-                        msgs=msgs,
-                        loop_dir=loop_dir,
-                        max_iterations=max_iters,
-                        agent_id=self.agent_id,
-                    ):
-                        yield msg, last
-                else:
-                    async for msg, last in run_mission_phase2(
-                        agent=agent,
-                        msgs=msgs,
-                        loop_dir=loop_dir,
-                        max_iterations=max_iters,
-                        agent_id=self.agent_id,
-                    ):
-                        yield msg, last
+                async with query_stream_lifecycle(
+                    request=request,
+                    runner=self,
+                    agent=agent,
+                    workspace=self._workspace,
+                    msgs=msgs,
+                    kwargs=kwargs,
+                ) as query_stream:
+                    if phase == 1:
+                        async for msg, last in run_mission_phase1(
+                            agent=agent,
+                            msgs=msgs,
+                            loop_dir=loop_dir,
+                            max_iterations=max_iters,
+                            agent_id=self.agent_id,
+                        ):
+                            await query_stream.observe_message(msg, last)
+                            yield msg, last
+                    else:
+                        async for msg, last in run_mission_phase2(
+                            agent=agent,
+                            msgs=msgs,
+                            loop_dir=loop_dir,
+                            max_iterations=max_iters,
+                            agent_id=self.agent_id,
+                        ):
+                            await query_stream.observe_message(msg, last)
+                            yield msg, last
             else:
-                async for msg, last in _stream_printing_messages_interruptible(
-                    agents=[agent],
-                    coroutine_task=agent(msgs),
-                ):
-                    yield msg, last
+                async with query_stream_lifecycle(
+                    request=request,
+                    runner=self,
+                    agent=agent,
+                    workspace=self._workspace,
+                    msgs=msgs,
+                    kwargs=kwargs,
+                ) as query_stream:
+                    async for msg, last in _stream_printing_messages_interruptible(
+                        agents=[agent],
+                        coroutine_task=agent(msgs),
+                    ):
+                        await query_stream.observe_message(msg, last)
+                        yield msg, last
 
         except asyncio.CancelledError as exc:
             logger.info(f"query_handler: {session_id} cancelled!")

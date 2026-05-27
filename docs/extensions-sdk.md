@@ -85,6 +85,8 @@ manifest 使用增量覆盖语义：后加载的 manifest 只更新它显式声�
 | 插件统一入口 | 让插件内部也使用 Extension SDK 能力 | `plugins/api.py`、`adapters.py` | `PluginApi.extensions`、`ExtensionAdapters` | 插件 API |
 | Skill 服务入口 | 业务或插件访问 SkillService、SkillPoolService | `adapters.py` | `skill_service`、`skill_pool_service` | API、插件 API |
 | Control command | 注册或移除 runner control command | `adapters.py` | `control_command`、`unregister_control_command` | API、装饰器 |
+| AgentRunner query_handler 托管 | 用业务函数完全接管 `AgentRunner.query_handler`，自行产出 `(msg, last)` | `runner.py`、`adapters.py`、`decorators.py` | `RunnerExtensionRegistry`、`RunnerQueryContext`、`RunnerPatch` | API、声明式、装饰器 |
+| AgentRunner query stream hooks | 用三段式 hook 包裹 QwenPaw 原生最终流式输出，观察 mission phase 和标准 agent stream 的 `msg`、`last`，并读取 `request`、`runner`、`agent`、`workspace` | `runner.py`、`adapters.py`、`decorators.py` | `RunnerExtensionRegistry`、`RunnerQueryContext`、`RunnerPatch` | API、声明式、装饰器 |
 | 品牌化运行时文案 | 自动替换 CLI help、click 输出、安全提示、provider 提示、restore 文件名 | `branding.py`、`cli/main.py`、`init_cmd.py`、`provider_manager.py` | `brand_text`、`brand_click_command`、`restore_artifact_name` | 自动、API |
 | 测试隔离 | 在测试中切换 registry，避免污染全局状态 | `registry.py` | `use_extension_registry` | API |
 
@@ -1031,6 +1033,198 @@ api.control_command(
 )
 ```
 
+### AgentRunner query handler hook（完全托管 query_handler）
+
+这个 hook 会在 QwenPaw 原生 `AgentRunner.query_handler` 逻辑之前执行。业务函数可以读取 `request`、`runner`、`workspace`、`msgs`、`kwargs`，并自行产出 `(msg, last)`。一旦某个 hook 返回非 `None` 结果，SDK 就认为本次 query 已由业务完全托管，不再执行 QwenPaw 原生 query 逻辑。
+
+返回值约定：
+
+1. 返回 `None`：不接管，继续尝试下一个 hook；如果没有 hook 接管，则走 QwenPaw 原生逻辑。
+2. 返回 async iterable：例如 async generator，逐条 yield `(msg, last)`。
+3. 返回 sync iterable：逐条 yield `(msg, last)`。
+4. 返回单个 `(msg, last)` tuple：只输出一条。
+
+注意：托管 hook 执行时 QwenPaw 原生 `QwenPawAgent` 还没有创建，所以 `context.agent` 为 `None`。如果业务需要 runner、workspace、request 中的数据，可以直接从 `context.runner`、`context.workspace`、`context.request` 读取。
+
+实现方式一：adapter API（推荐，最直接）
+
+```python
+async def handle_query(context):
+    request = context.request
+    session_id = getattr(request, "session_id", "")
+    user_id = getattr(request, "user_id", "")
+
+    if not should_use_business_runner(request):
+        return None
+
+    async def stream():
+        async for msg, last in business_query_handler(
+            msgs=context.msgs,
+            session_id=session_id,
+            user_id=user_id,
+            runner=context.runner,
+            workspace=context.workspace,
+            **context.kwargs,
+        ):
+            yield msg, last
+
+    return stream()
+
+def extension(registry):
+    registry.adapters.query_handler_hook(handle_query)
+```
+
+实现方式二：装饰器（推荐用于拆分业务函数）
+
+```python
+from qwenpaw.extensions import RunnerQueryContext, qwenpaw_extension
+
+extension = qwenpaw_extension("my_product")
+
+@extension.query_handler_hook
+async def handle_query(context: RunnerQueryContext):
+    if getattr(context.request, "channel", "") != "console":
+        return None
+    return business_query_handler(context.msgs, context.request)
+```
+
+实现方式三：声明式 `ExtensionSpec`（集中审计、便于复用）
+
+```python
+from qwenpaw.extensions import ExtensionSpec, RunnerPatch
+
+extension = ExtensionSpec(
+    name="my_product",
+    runner_patch=RunnerPatch(
+        query_handler_hooks=(handle_query,),
+    ),
+)
+```
+
+如果业务完全托管 query handler，SDK 不会再自动调用 query stream hooks。业务需要在自己的 handler 中自行观察、统计或上报输出。
+
+### AgentRunner query stream hooks（推荐，贴近 QwenPaw 原生流式逻辑）
+
+这组 hook 包裹 QwenPaw 原生 query 末尾的流式输出，适合做审计、指标、耗时统计、旁路消息记录。它只观察 `run_mission_phase1`、`run_mission_phase2` 和 `_stream_printing_messages_interruptible` 产出的结果，对齐业务直接改源码时常见的写法：
+
+```python
+tracker = await start_stats(...)
+async for msg, last in ...:
+    await tracker.observe_message(msg, last)
+    yield msg, last
+await tracker.finish(...)
+```
+
+业务可以注册三类 hook：
+
+| hook | 调用时机 | 典型用途 |
+| --- | --- | --- |
+| `before_query_stream_hook(context)` | 原生最终流式输出开始前 | 创建 tracker、trace、统计上下文，并写入 `context.state` |
+| `query_stream_message_hook(context, msg, last)` | 每条被观察的 `(msg, last)` 产出前 | 观察消息、记录指标、旁路上报 |
+| `after_query_stream_hook(context, error)` | 原生最终流式输出结束后 | flush、close、失败上报。`error=None` 表示正常结束 |
+
+`context.state` 是同一次 query stream hooks 共享的 dict。推荐在 `before_query_stream_hook` 中初始化业务对象，在 `query_stream_message_hook` 和 `after_query_stream_hook` 中复用。
+
+它不会观察以下输出：
+
+1. `query_handler_hook` 完全托管后的业务输出。业务托管后应由业务自己观察。
+2. command path 提前返回的输出，例如 `/approval` 等命令。
+3. `/mission` 命令解析阶段提前返回的提示。
+4. skill 信息展示等提前返回的 display-only 输出。
+
+hook 函数可以读取：
+
+| 字段 | 说明 |
+| --- | --- |
+| `context.request` | `query_handler` 的 `request` 入参，可读取 `session_id`、`user_id`、`channel`、`channel_meta` 等 |
+| `context.runner` | 当前 `AgentRunner` 实例 |
+| `context.agent` | 当前 query 内创建的 `QwenPawAgent` |
+| `context.workspace` | 当前 workspace 实例，可读取 `agent_id`、`workspace_dir`、`memory_manager`、`context_manager` 等 |
+| `context.msgs` | 原始 `msgs` 入参 |
+| `context.kwargs` | 原始 `kwargs` 的只读映射 |
+| `context.state` | 本次 query stream hooks 共享的状态字典 |
+
+`before_query_stream_hook` 可以直接修改 `context.state`，也可以返回一个 dict，SDK 会自动 merge 到 `context.state`。如果返回非 dict、非 `None` 的对象，SDK 会放到 `context.state["value"]`。
+
+注意：这是观察型 hook，不能通过返回值改写 `msg` 或 `last`。业务代码应避免原地修改 `msg`。
+
+实现方式一：adapter API（推荐，最直接）
+
+```python
+async def before_stream(context):
+    context.state["tracker"] = await start_query_stats(
+        agent_id=getattr(context.workspace, "agent_id", ""),
+        session_id=getattr(context.request, "session_id", ""),
+        user_id=getattr(context.request, "user_id", ""),
+        channel=getattr(context.request, "channel", ""),
+        agent=context.agent,
+    )
+
+async def on_stream_message(context, msg, last):
+    await context.state["tracker"].observe_message(msg, last)
+
+async def after_stream(context, error):
+    await context.state["tracker"].finish(error=error)
+
+def extension(registry):
+    registry.adapters.before_query_stream_hook(before_stream)
+    registry.adapters.query_stream_message_hook(on_stream_message)
+    registry.adapters.after_query_stream_hook(after_stream)
+```
+
+实现方式二：装饰器（推荐用于把 hook 拆成独立函数）
+
+```python
+from qwenpaw.extensions import RunnerQueryContext, qwenpaw_extension
+
+extension = qwenpaw_extension("my_product")
+
+@extension.before_query_stream_hook
+async def before_stream(context: RunnerQueryContext):
+    return {
+        "tracker": await start_query_stats(
+            request=context.request,
+            agent=context.agent,
+            workspace=context.workspace,
+        )
+    }
+
+@extension.query_stream_message_hook
+async def on_stream_message(context: RunnerQueryContext, msg, last):
+    await context.state["tracker"].observe_message(msg, last)
+
+@extension.after_query_stream_hook
+async def after_stream(context: RunnerQueryContext, error):
+    await context.state["tracker"].finish(
+        request=context.request,
+        error=error,
+    )
+```
+
+实现方式三：声明式 `ExtensionSpec`（集中审计、便于复用）
+
+```python
+from qwenpaw.extensions import ExtensionSpec, RunnerPatch
+
+def before_stream(context):
+    context.state["started"] = True
+
+def on_stream_message(context, msg, last):
+    ...
+
+def after_stream(context, error):
+    ...
+
+extension = ExtensionSpec(
+    name="my_product",
+    runner_patch=RunnerPatch(
+        before_query_stream_hooks=(before_stream,),
+        query_stream_message_hooks=(on_stream_message,),
+        after_query_stream_hooks=(after_stream,),
+    ),
+)
+```
+
 ## 十六、品牌化运行时文案和 restore 文件
 
 这部分多数情况下自动生效。SDK 会根据 `ProductSpec` 做以下替换：
@@ -1079,8 +1273,18 @@ restore_artifact_name(".lock")              # .myproduct_restore.lock
 | `plugin_policy` | `PluginPolicy` | `PluginPolicy()` | 插件策略 |
 | `cli_patch` | `CliPatch` | `CliPatch()` | CLI patch |
 | `app_patch` | `AppPatch` | `AppPatch()` | FastAPI patch |
+| `runner_patch` | `RunnerPatch` | `RunnerPatch()` | AgentRunner hook patch |
 | `provider_patches` | `tuple[ProviderPatch, ...]` | `()` | Provider patch |
 | `builtin_channels` | `tuple[BuiltinChannelSpec, ...]` | `()` | 内置 channel |
+
+`RunnerPatch` 字段：
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `query_handler_hooks` | `tuple[Callable[..., Any], ...]` | `()` | 完全托管 `AgentRunner.query_handler` 的业务处理函数。第一个返回非 `None` 的 hook 会接管本次 query |
+| `before_query_stream_hooks` | `tuple[Callable[..., Any], ...]` | `()` | QwenPaw 原生最终流式输出开始前调用 |
+| `query_stream_message_hooks` | `tuple[Callable[..., Any], ...]` | `()` | QwenPaw 原生最终流式输出每条 `(msg, last)` 产出前调用 |
+| `after_query_stream_hooks` | `tuple[Callable[..., Any], ...]` | `()` | QwenPaw 原生最终流式输出结束后调用，接收 `error` |
 
 完整示例：
 
@@ -1097,7 +1301,24 @@ from qwenpaw.extensions import (
     ProductSpec,
     ProviderPatch,
     RouterSpec,
+    RunnerPatch,
 )
+
+def handle_query(context):
+    return None
+
+def before_stream(context):
+    context.state["tracker"] = start_query_stats(
+        request=context.request,
+        agent=context.agent,
+        workspace=context.workspace,
+    )
+
+def on_stream_message(context, msg, last):
+    context.state["tracker"].observe_message(msg, last)
+
+def after_stream(context, error):
+    context.state["tracker"].finish(error=error)
 
 extension = ExtensionSpec(
     name="my_product",
@@ -1130,6 +1351,12 @@ extension = ExtensionSpec(
         }
     ),
     app_patch=AppPatch(routers=(RouterSpec(router, prefix="/api/my-product"),)),
+    runner_patch=RunnerPatch(
+        query_handler_hooks=(handle_query,),
+        before_query_stream_hooks=(before_stream,),
+        query_stream_message_hooks=(on_stream_message,),
+        after_query_stream_hooks=(after_stream,),
+    ),
     provider_patches=(ProviderPatch("my-cloud", MyProductProvider),),
     builtin_channels=(BuiltinChannelSpec("workchat", WorkChatChannel),),
 )
@@ -1363,6 +1590,23 @@ def configure(context) -> None:
     )
 
     api.plugin_search_path("~/.myproduct/plugins")
+
+
+@extension.before_query_stream_hook
+async def before_stream(context):
+    context.state["tracker"] = await start_query_stats(
+        request=context.request,
+        agent=context.agent,
+        workspace=context.workspace,
+    )
+
+@extension.query_stream_message_hook
+async def on_stream_message(context, msg, last):
+    await context.state["tracker"].observe_message(msg, last)
+
+@extension.after_query_stream_hook
+async def after_stream(context, error):
+    await context.state["tracker"].finish(error=error)
 ```
 
 ### 构建和验证
@@ -1386,3 +1630,4 @@ myproduct app --host 0.0.0.0 --port 18789
 6. `my-cloud` provider 注册成功，`ollama` provider 被禁用。
 7. `workchat` 内置 channel 注册成功。
 8. restore lock 文件名使用 `.myproduct_restore.lock`。
+9. QwenPaw 原生最终流式输出可被 query stream hooks 包裹，mission phase 和标准 agent stream 的输出会调用 `on_stream_message(context, msg, last)`。

@@ -238,6 +238,16 @@ class AppPatch:
 
 
 @dataclass(frozen=True)
+class RunnerPatch:
+    """Agent runner extension hooks."""
+
+    query_handler_hooks: tuple[Callable[..., Any], ...] = ()
+    before_query_stream_hooks: tuple[Callable[..., Any], ...] = ()
+    query_stream_message_hooks: tuple[Callable[..., Any], ...] = ()
+    after_query_stream_hooks: tuple[Callable[..., Any], ...] = ()
+
+
+@dataclass(frozen=True)
 class ProviderPatch:
     """Provider registration patch."""
 
@@ -275,6 +285,7 @@ class ExtensionSpec:
     plugin_policy: PluginPolicy = field(default_factory=PluginPolicy)
     cli_patch: CliPatch = field(default_factory=CliPatch)
     app_patch: AppPatch = field(default_factory=AppPatch)
+    runner_patch: RunnerPatch = field(default_factory=RunnerPatch)
     provider_patches: tuple[ProviderPatch, ...] = ()
     builtin_channels: tuple[BuiltinChannelSpec, ...] = ()
 

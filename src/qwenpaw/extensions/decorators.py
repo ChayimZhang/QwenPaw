@@ -33,6 +33,10 @@ class ExtensionDecorator:
         self._product_factories: list[Callable[..., ProductSpec]] = []
         self._feature_factories: list[Callable[..., FeaturePolicy]] = []
         self._configurators: list[Callable[..., Any]] = []
+        self._query_handler_hooks: list[Callable[..., Any]] = []
+        self._before_query_stream_hooks: list[Callable[..., Any]] = []
+        self._query_stream_message_hooks: list[Callable[..., Any]] = []
+        self._after_query_stream_hooks: list[Callable[..., Any]] = []
 
     def product(
         self,
@@ -52,6 +56,31 @@ class ExtensionDecorator:
         self._configurators.append(func)
         return func
 
+    def before_query_stream_hook(
+        self,
+        func: Callable[..., Any],
+    ) -> Callable[..., Any]:
+        self._before_query_stream_hooks.append(func)
+        return func
+
+    def query_stream_message_hook(
+        self,
+        func: Callable[..., Any],
+    ) -> Callable[..., Any]:
+        self._query_stream_message_hooks.append(func)
+        return func
+
+    def after_query_stream_hook(
+        self,
+        func: Callable[..., Any],
+    ) -> Callable[..., Any]:
+        self._after_query_stream_hooks.append(func)
+        return func
+
+    def query_handler_hook(self, func: Callable[..., Any]) -> Callable[..., Any]:
+        self._query_handler_hooks.append(func)
+        return func
+
     def apply(
         self,
         registry: ExtensionRegistry | None = None,
@@ -65,6 +94,14 @@ class ExtensionDecorator:
             target.configure_features(self._invoke(factory, context))
         for configurator in self._configurators:
             self._invoke(configurator, context)
+        for hook in self._query_handler_hooks:
+            target.runner.add_query_handler_hook(hook)
+        for hook in self._before_query_stream_hooks:
+            target.runner.add_before_query_stream_hook(hook)
+        for hook in self._query_stream_message_hooks:
+            target.runner.add_query_stream_message_hook(hook)
+        for hook in self._after_query_stream_hooks:
+            target.runner.add_after_query_stream_hook(hook)
         return target
 
     def __call__(

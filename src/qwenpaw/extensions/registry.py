@@ -17,6 +17,7 @@ from qwenpaw.extensions.specs import (
     PluginPolicy,
     ProductSpec,
     ProviderPatch,
+    RunnerPatch,
 )
 
 
@@ -37,6 +38,7 @@ class ExtensionRegistry:
         from qwenpaw.extensions.channels import ChannelExtensionRegistry
         from qwenpaw.extensions.cli import CliRegistry
         from qwenpaw.extensions.providers import ProviderExtensionRegistry
+        from qwenpaw.extensions.runner import RunnerExtensionRegistry
 
         self.product = ProductSpec()
         self.logging = LoggingSpec.from_product(self.product)
@@ -46,6 +48,7 @@ class ExtensionRegistry:
         self.channels = ChannelExtensionRegistry()
         self.cli = CliRegistry()
         self.providers = ProviderExtensionRegistry()
+        self.runner = RunnerExtensionRegistry()
         self.extensions: dict[str, object] = {}
 
     def configure_product(self, spec: ProductSpec) -> None:
@@ -117,6 +120,7 @@ class ExtensionRegistry:
         self.configure_plugins(spec.plugin_policy)
         self._apply_cli_patch(spec.cli_patch)
         self._apply_app_patch(spec.app_patch)
+        self._apply_runner_patch(spec.runner_patch)
         for patch in spec.provider_patches:
             self._apply_provider_patch(patch)
         for channel in spec.builtin_channels:
@@ -158,6 +162,16 @@ class ExtensionRegistry:
             self.app.add_before_include_routers_hook(hook)
         for hook in patch.after_include_routers:
             self.app.add_after_include_routers_hook(hook)
+
+    def _apply_runner_patch(self, patch: RunnerPatch) -> None:
+        for hook in patch.query_handler_hooks:
+            self.runner.add_query_handler_hook(hook)
+        for hook in patch.before_query_stream_hooks:
+            self.runner.add_before_query_stream_hook(hook)
+        for hook in patch.query_stream_message_hooks:
+            self.runner.add_query_stream_message_hook(hook)
+        for hook in patch.after_query_stream_hooks:
+            self.runner.add_after_query_stream_hook(hook)
 
     def _apply_provider_patch(self, patch: ProviderPatch) -> None:
         if patch.replace:
