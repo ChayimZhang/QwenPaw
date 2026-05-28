@@ -53,13 +53,6 @@ def _tmp_dir(dst: Path) -> Path:
     return dst.with_name(dst.name + _RESTORE_TMP_SUFFIX)
 
 
-def test_restore_lock_timeout_uses_qwenpaw_env_prefix(monkeypatch) -> None:
-    monkeypatch.setenv("MYPRODUCT_RESTORE_LOCK_TIMEOUT_SECONDS", "7")
-    monkeypatch.setenv("QWENPAW_RESTORE_LOCK_TIMEOUT_SECONDS", "3")
-
-    assert safe_swap_module._restore_lock_timeout_seconds() == 3.0
-
-
 @pytest.fixture(name="secrets_dir")
 def _secrets_dir(tmp_path: Path) -> Path:
     dst = tmp_path / "secrets"

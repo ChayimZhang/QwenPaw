@@ -35,7 +35,6 @@ def test_constant_uses_extension_product_paths(tmp_path):
         assert constant.MODULE_NAME == "my_product"
         assert constant.PROJECT_NAME == "MyProduct"
         assert constant.PROJECT_VERSION == "2.0.0"
-        assert constant.RELOAD_MODE_ENV == "QWENPAW_RELOAD_MODE"
         assert constant.WORKING_DIR == tmp_path / "work"
         assert constant.SECRET_DIR == tmp_path / "secret"
         assert constant.CUSTOM_CHANNELS_DIR == tmp_path / "work" / "custom_channels"

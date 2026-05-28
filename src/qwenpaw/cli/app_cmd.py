@@ -8,7 +8,7 @@ import click
 import uvicorn
 
 from ..app.auth import is_auth_enabled
-from ..constant import LOG_LEVEL_ENV, RELOAD_MODE_ENV
+from ..constant import LOG_LEVEL_ENV
 from ..config.utils import write_last_api
 from ..utils.http import is_loopback_host
 from ..utils.logging import setup_logger, SuppressPathAccessLogFilter
@@ -122,9 +122,9 @@ def app_cmd(
     # Signal reload mode to browser_control.py for Windows
     # compatibility: use sync Playwright + ThreadPool only when reload=True
     if reload:
-        os.environ[RELOAD_MODE_ENV] = "1"
+        os.environ["QWENPAW_RELOAD_MODE"] = "1"
     else:
-        os.environ.pop(RELOAD_MODE_ENV, None)
+        os.environ.pop("QWENPAW_RELOAD_MODE", None)
 
     setup_logger(log_level)
     if log_level in ("debug", "trace"):
