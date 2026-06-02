@@ -1,43 +1,11 @@
-from pathlib import Path
-
 import pytest
 
 from qwenpaw.extensions import (
     BuiltinChannelSpec,
     ExtensionSpec,
     FeaturePolicy,
-    ProductSpec,
     RunnerPatch,
 )
-
-
-def test_product_spec_defaults_expand_paths_under_working_dir():
-    spec = ProductSpec()
-
-    assert spec.product_name == "QwenPaw"
-    assert spec.module_alias == "qwenpaw"
-    assert spec.cli_name == "qwenpaw"
-    assert spec.working_dir == Path("~/.qwenpaw").expanduser()
-    assert spec.secret_dir == Path("~/.qwenpaw.secret").expanduser()
-    assert spec.backup_dir == spec.working_dir / "backups"
-    assert spec.plugins_dir == spec.working_dir / "plugins"
-    assert spec.custom_channels_dir == spec.working_dir / "custom_channels"
-    assert spec.media_dir == spec.working_dir / "media"
-    assert spec.local_provider_dir == spec.working_dir / "local_models"
-    assert spec.product_version is None
-    assert spec.console_static_dir is None
-    assert spec.agent_prompt_files == ("AGENTS.md", "SOUL.md", "PROFILE.md")
-
-
-def test_product_spec_normalizes_explicit_console_static_dir():
-    spec = ProductSpec(console_static_dir="~/myproduct/console")
-
-    assert spec.console_static_dir == Path("~/myproduct/console").expanduser()
-
-
-def test_product_spec_rejects_unknown_env_prefixes_field():
-    with pytest.raises(TypeError):
-        ProductSpec(product_name="MyProduct", env_prefixes=("MYPRODUCT", "QWENPAW"))
 
 
 def test_feature_policy_normalizes_sets_and_checks_enabled_state():
@@ -101,6 +69,5 @@ def test_extension_spec_minimal_shape():
     spec = ExtensionSpec(name="my_product")
 
     assert spec.name == "my_product"
-    assert spec.product is None
     assert isinstance(spec.features, FeaturePolicy)
     assert isinstance(spec.runner_patch, RunnerPatch)

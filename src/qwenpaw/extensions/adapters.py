@@ -28,15 +28,6 @@ class ExtensionAdapters:
     def disable_channel(self, key: str) -> None:
         self.registry.configure_features(FeaturePolicy(disabled_channels={key}))
 
-    def agent_prompt_files(self, *paths: str | Path) -> None:
-        self.registry.update_product(agent_prompt_files=tuple(paths))
-
-    def product_version(self, version: str | None) -> None:
-        self.registry.update_product(product_version=version)
-
-    def product(self, **changes: Any) -> None:
-        self.registry.update_product(**changes)
-
     def before_query_stream_hook(self, hook: Any) -> None:
         self.registry.runner.add_before_query_stream_hook(hook)
 

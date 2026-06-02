@@ -12,74 +12,14 @@ from qwenpaw.extensions.registry import ExtensionRegistry
 from qwenpaw.extensions.specs import FeaturePolicy
 
 
-_PRODUCT_PATH_KEYS = {
-    "working_dir",
-    "secret_dir",
-    "backup_dir",
-    "plugins_dir",
-    "custom_channels_dir",
-    "media_dir",
-    "local_provider_dir",
-    "console_static_dir",
-}
-_PRODUCT_FIELD_MAP = {
-    "name": "product_name",
-    "version": "product_version",
-    "module_alias": "module_alias",
-    "cli_name": "cli_name",
-    "working_dir": "working_dir",
-    "secret_dir": "secret_dir",
-    "backup_dir": "backup_dir",
-    "plugins_dir": "plugins_dir",
-    "custom_channels_dir": "custom_channels_dir",
-    "media_dir": "media_dir",
-    "local_provider_dir": "local_provider_dir",
-    "console_static_dir": "console_static_dir",
-    "agent_prompt_files": "agent_prompt_files",
-}
-
-
-def _resolve_manifest_relative_path(value: Any, base_dir: Path) -> Any:
-    if not isinstance(value, (str, Path)):
-        return value
-    raw = str(value)
-    if not raw or raw.startswith("~"):
-        return value
-    path = Path(raw)
-    if path.is_absolute():
-        return value
-    return base_dir / path
-
-
-def _resolve_manifest_relative_paths(data: dict[str, Any], base_dir: Path) -> None:
-    product = data.get("product") or {}
-    for key in _PRODUCT_PATH_KEYS:
-        if key in product:
-            product[key] = _resolve_manifest_relative_path(product[key], base_dir)
-
-
 def apply_manifest_data(
     registry: ExtensionRegistry,
     data: dict[str, Any],
     *,
     base_dir: str | Path | None = None,
 ) -> None:
-    if base_dir is not None:
-        _resolve_manifest_relative_paths(data, Path(base_dir).expanduser().resolve())
-    product = data.get("product") or {}
+    _ = base_dir
     features = data.get("features") or {}
-
-    if product:
-        product_changes = {
-            target: product[source]
-            for source, target in _PRODUCT_FIELD_MAP.items()
-            if source in product
-        }
-        if "agent_prompt_files" in product_changes:
-            product_changes["agent_prompt_files"] = tuple(
-                product_changes["agent_prompt_files"]
-            )
-        registry.update_product(**product_changes)
 
     if features:
         registry.configure_features(

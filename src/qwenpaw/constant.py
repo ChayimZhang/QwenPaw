@@ -3,17 +3,10 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-from qwenpaw.extensions import get_extension_registry, load_extensions
-
 # Load .env file from project root before reading any env vars
 _env_path = Path(__file__).resolve().parent.parent.parent / ".env"
 if _env_path.exists():
     load_dotenv(_env_path)
-load_extensions()
-_EXTENSION_REGISTRY = get_extension_registry()
-_PRODUCT = _EXTENSION_REGISTRY.product
-_DEFAULT_PRODUCT = type(_PRODUCT)()
-_USES_DEFAULT_PRODUCT = _PRODUCT == _DEFAULT_PRODUCT
 
 
 def _get_env(key: str, default: str = "") -> str:
@@ -94,31 +87,30 @@ class EnvVarLoader:
 
 
 # WORKING_DIR priority:
-# 1. QWENPAW_WORKING_DIR env var, then COPAW_WORKING_DIR fallback.
-# 2. ~/.copaw exists in the default product profile (legacy installation).
-# 3. ProductSpec.working_dir.
+# 1. QWENPAW_WORKING_DIR / COPAW_WORKING_DIR env var is set → use it
+# 2. ~/.copaw exists (legacy installation) → use it as-is
+# 3. Default → ~/.qwenpaw
 _explicit_working_dir = _get_env("QWENPAW_WORKING_DIR")
 if _explicit_working_dir:
     WORKING_DIR = Path(_explicit_working_dir).expanduser().resolve()
-elif not _USES_DEFAULT_PRODUCT:
-    WORKING_DIR = Path(_PRODUCT.working_dir).expanduser().resolve()
 else:
     _legacy_copaw_dir = Path("~/.copaw").expanduser()
     if _legacy_copaw_dir.exists():
         WORKING_DIR = _legacy_copaw_dir.resolve()
     else:
-        WORKING_DIR = Path(_PRODUCT.working_dir).expanduser().resolve()
-_explicit_secret_dir = _get_env("QWENPAW_SECRET_DIR")
-if _explicit_secret_dir:
-    SECRET_DIR = Path(_explicit_secret_dir).expanduser().resolve()
-elif not _USES_DEFAULT_PRODUCT:
-    SECRET_DIR = Path(_PRODUCT.secret_dir).expanduser().resolve()
-else:
-    SECRET_DIR = Path(f"{WORKING_DIR}.secret").expanduser().resolve()
+        WORKING_DIR = Path("~/.qwenpaw").expanduser().resolve()
+SECRET_DIR = (
+    Path(
+        EnvVarLoader.get_str(
+            "QWENPAW_SECRET_DIR",
+            f"{WORKING_DIR}.secret",
+        ),
+    )
+    .expanduser()
+    .resolve()
+)
 
-MODULE_NAME = _PRODUCT.module_alias
-PROJECT_NAME = _PRODUCT.product_name
-PROJECT_VERSION = _PRODUCT.product_version
+PROJECT_NAME = "QwenPaw"
 
 
 def _resolve_docs_dir() -> Path | None:
@@ -137,16 +129,10 @@ def _resolve_docs_dir() -> Path | None:
 DOCS_DIR: Path | None = _resolve_docs_dir()
 
 # Default media directory for channels (cross-platform)
-if _USES_DEFAULT_PRODUCT:
-    DEFAULT_MEDIA_DIR = (WORKING_DIR / "media").resolve()
-else:
-    DEFAULT_MEDIA_DIR = Path(_PRODUCT.media_dir).expanduser().resolve()
+DEFAULT_MEDIA_DIR = WORKING_DIR / "media"
 
 # Default local provider directory
-if _USES_DEFAULT_PRODUCT:
-    DEFAULT_LOCAL_PROVIDER_DIR = (WORKING_DIR / "local_models").resolve()
-else:
-    DEFAULT_LOCAL_PROVIDER_DIR = Path(_PRODUCT.local_provider_dir).expanduser().resolve()
+DEFAULT_LOCAL_PROVIDER_DIR = WORKING_DIR / "local_models"
 
 JOBS_FILE = EnvVarLoader.get_str("QWENPAW_JOBS_FILE", "jobs.json")
 
@@ -233,25 +219,23 @@ DOCS_ENABLED = EnvVarLoader.get_bool("QWENPAW_OPENAPI_DOCS", False)
 MEMORY_DIR = WORKING_DIR / "memory"
 
 # Backup directory
-_backup_default = _PRODUCT.backup_dir
-if _USES_DEFAULT_PRODUCT:
-    _backup_default = f"{WORKING_DIR}.backups"
-BACKUP_DIR = Path(
-    EnvVarLoader.get_str("QWENPAW_BACKUP_DIR", str(_backup_default)),
-).expanduser().resolve()
+BACKUP_DIR = (
+    Path(
+        EnvVarLoader.get_str(
+            "QWENPAW_BACKUP_DIR",
+            f"{WORKING_DIR}.backups",
+        ),
+    )
+    .expanduser()
+    .resolve()
+)
 
 # Custom channel modules (installed via `qwenpaw channels install`); manager
 # loads BaseChannel subclasses from here.
-if _USES_DEFAULT_PRODUCT:
-    CUSTOM_CHANNELS_DIR = (WORKING_DIR / "custom_channels").resolve()
-else:
-    CUSTOM_CHANNELS_DIR = Path(_PRODUCT.custom_channels_dir).expanduser().resolve()
+CUSTOM_CHANNELS_DIR = WORKING_DIR / "custom_channels"
 
 # Plugin directory (installed via `qwenpaw plugin install`)
-if _USES_DEFAULT_PRODUCT:
-    PLUGINS_DIR = (WORKING_DIR / "plugins").resolve()
-else:
-    PLUGINS_DIR = Path(_PRODUCT.plugins_dir).expanduser().resolve()
+PLUGINS_DIR = WORKING_DIR / "plugins"
 
 # Local models directory
 MODELS_DIR = WORKING_DIR / "models"

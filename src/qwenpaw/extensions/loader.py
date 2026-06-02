@@ -26,7 +26,7 @@ _AUTO_MANIFEST_NAMES = (
     "qwenpaw-extension.yaml",
     "qwenpaw-extension.yml",
 )
-_MANIFEST_ROOT_KEYS = {"product", "features"}
+_MANIFEST_ROOT_KEYS = {"features"}
 
 
 def _iter_manifest_search_dirs(search_paths: Iterable[str | Path] | None) -> Iterable[Path]:

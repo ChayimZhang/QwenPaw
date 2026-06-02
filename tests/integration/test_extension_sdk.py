@@ -2,11 +2,9 @@ from qwenpaw.extensions import (
     BuiltinChannelSpec,
     ExtensionRegistry,
     FeaturePolicy,
-    ProductSpec,
     qwenpaw_extension,
     use_extension_registry,
 )
-from qwenpaw.extensions.app import resolve_console_static_dir
 
 
 class WorkChatChannel:
@@ -19,21 +17,7 @@ class DiscordChannel:
 
 def test_extension_sdk_smoke_registers_remaining_runtime_surfaces(tmp_path):
     extension = qwenpaw_extension("my_product")
-    console_dir = tmp_path / "console"
     channel_dir = tmp_path / "channels"
-
-    @extension.product
-    def product_spec():
-        return ProductSpec(
-            product_name="MyProduct",
-            product_version="2.0.0",
-            module_alias="my_product",
-            cli_name="myproduct",
-            working_dir=tmp_path / "work",
-            secret_dir=tmp_path / "secret",
-            console_static_dir=console_dir,
-            agent_prompt_files=("MY_PRODUCT.md", "AGENTS.md"),
-        )
 
     @extension.features
     def feature_policy():
@@ -57,12 +41,6 @@ def test_extension_sdk_smoke_registers_remaining_runtime_surfaces(tmp_path):
     extension(registry)
 
     with use_extension_registry(registry):
-        assert registry.product.product_name == "MyProduct"
-        assert registry.product.product_version == "2.0.0"
-        assert registry.product.module_alias == "my_product"
-        assert registry.product.agent_prompt_files == ("MY_PRODUCT.md", "AGENTS.md")
-        assert resolve_console_static_dir() == console_dir
-
         channels = registry.channels.apply_policy(registry.features)
         assert channels["workchat"].factory is WorkChatChannel
         assert "discord" not in channels

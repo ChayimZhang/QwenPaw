@@ -26,7 +26,6 @@ from qwenpaw.extensions.specs import (
     BuiltinChannelSpec,
     ExtensionSpec,
     FeaturePolicy,
-    ProductSpec,
     RunnerPatch,
 )
 from qwenpaw.extensions.registry import (
@@ -50,7 +49,6 @@ __all__ = [
     "ExtensionDecorator",
     "ExtensionSpec",
     "FeaturePolicy",
-    "ProductSpec",
     "RunnerExtensionRegistry",
     "RunnerQueryContext",
     "RunnerPatch",

@@ -19,7 +19,6 @@ from ..config.config import (
     AgentsConfig,
     AgentsLLMRoutingConfig,
     AgentsRunningConfig,
-    default_agent_prompt_files,
     save_agent_config,
 )
 from ..constant import (
@@ -150,7 +149,7 @@ def _do_migrate_legacy_workspace() -> bool:
             legacy_agents.system_prompt_files
             if hasattr(legacy_agents, "system_prompt_files")
             and legacy_agents.system_prompt_files
-            else default_agent_prompt_files()
+            else ["AGENTS.md", "SOUL.md", "PROFILE.md"]
         ),
         tools=config.tools if hasattr(config, "tools") else None,
         security=config.security if hasattr(config, "security") else None,

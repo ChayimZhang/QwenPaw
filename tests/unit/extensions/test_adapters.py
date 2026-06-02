@@ -28,20 +28,6 @@ def test_adapters_expose_feature_and_channel_helpers():
     assert registry.features.is_channel_enabled("wechat") is False
 
 
-def test_adapters_update_product_fields(tmp_path):
-    registry = ExtensionRegistry()
-    adapters = ExtensionAdapters(registry)
-
-    adapters.product_version("2.0.0")
-    adapters.product(module_alias="custom_product", working_dir=tmp_path / "work")
-    adapters.agent_prompt_files("MY_PRODUCT.md", "AGENTS.md")
-
-    assert registry.product.product_version == "2.0.0"
-    assert registry.product.module_alias == "custom_product"
-    assert registry.product.working_dir == tmp_path / "work"
-    assert registry.product.agent_prompt_files == ("MY_PRODUCT.md", "AGENTS.md")
-
-
 def test_registry_exposes_adapters():
     registry = ExtensionRegistry()
 

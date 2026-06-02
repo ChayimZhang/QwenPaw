@@ -1,7 +1,7 @@
 from qwenpaw.extensions import (
     ExtensionRegistry,
     ExtensionSpec,
-    ProductSpec,
+    FeaturePolicy,
     discover_extension_manifest,
     load_extensions,
 )
@@ -21,7 +21,7 @@ def test_load_extensions_from_entry_point(monkeypatch):
     registry = ExtensionRegistry()
 
     def register(target):
-        target.extension("my_product").product(name="MyProduct", cli_name="myproduct")
+        target.extension("my_product").disable_features("builtin_qa_agent")
 
     entry_point = _EntryPointStub(register)
     monkeypatch.setattr(
@@ -33,14 +33,14 @@ def test_load_extensions_from_entry_point(monkeypatch):
 
     load_extensions(registry=registry)
 
-    assert registry.product.product_name == "MyProduct"
+    assert registry.features.is_feature_enabled("builtin_qa_agent") is False
 
 
 def test_load_extensions_applies_entry_point_extension_spec(monkeypatch):
     registry = ExtensionRegistry()
     spec = ExtensionSpec(
         name="my_product",
-        product=ProductSpec(product_name="MyProduct", cli_name="myproduct"),
+        features=FeaturePolicy(disabled_features={"builtin_qa_agent"}),
     )
     entry_point = _EntryPointStub(spec)
     monkeypatch.setattr(
@@ -53,7 +53,7 @@ def test_load_extensions_applies_entry_point_extension_spec(monkeypatch):
     load_extensions(registry=registry)
 
     assert registry.extensions["my_product"] is spec
-    assert registry.product.product_name == "MyProduct"
+    assert registry.features.is_feature_enabled("builtin_qa_agent") is False
 
 
 def test_load_extensions_from_package_manifest_entry_point(tmp_path, monkeypatch):
@@ -62,14 +62,12 @@ def test_load_extensions_from_package_manifest_entry_point(tmp_path, monkeypatch
     (package / "__init__.py").write_text("", encoding="utf-8")
     (package / "manifest.yaml").write_text(
         """
-product:
-  name: MyProduct
-  cli_name: myproduct
-  console_static_dir: ./console
+features:
+  disabled_features:
+    - builtin_qa_agent
 """.strip(),
         encoding="utf-8",
     )
-    (package / "console").mkdir()
     registry = ExtensionRegistry()
     manifest_entry_point = _EntryPointStub(
         module="my_product",
@@ -85,8 +83,7 @@ product:
 
     load_extensions(registry=registry)
 
-    assert registry.product.product_name == "MyProduct"
-    assert registry.product.console_static_dir == package / "console"
+    assert registry.features.is_feature_enabled("builtin_qa_agent") is False
 
 
 def test_config_path_overrides_package_manifest_entry_point(tmp_path, monkeypatch):
@@ -95,17 +92,18 @@ def test_config_path_overrides_package_manifest_entry_point(tmp_path, monkeypatc
     (package / "__init__.py").write_text("", encoding="utf-8")
     (package / "manifest.yaml").write_text(
         """
-product:
-  name: PackagedProduct
-  cli_name: packaged
+features:
+  disabled_features:
+    - packaged_feature
 """.strip(),
         encoding="utf-8",
     )
     override = tmp_path / "override.yaml"
     override.write_text(
         """
-product:
-  name: OverrideProduct
+features:
+  disabled_features:
+    - override_feature
 """.strip(),
         encoding="utf-8",
     )
@@ -124,43 +122,14 @@ product:
 
     load_extensions(registry=registry, config_path=override)
 
-    assert registry.product.product_name == "OverrideProduct"
-    assert registry.product.cli_name == "packaged"
-
-
-def test_manifest_product_working_dir_recomputes_default_child_paths(tmp_path):
-    manifest = tmp_path / "extension.yaml"
-    manifest.write_text(
-        """
-product:
-  working_dir: ./work
-""".strip(),
-        encoding="utf-8",
-    )
-    registry = ExtensionRegistry()
-
-    load_extensions(registry=registry, config_path=manifest, include_entry_points=False)
-
-    assert registry.product.working_dir == tmp_path / "work"
-    assert registry.product.backup_dir == tmp_path / "work" / "backups"
-    assert registry.product.plugins_dir == tmp_path / "work" / "plugins"
+    assert registry.features.is_feature_enabled("packaged_feature") is False
+    assert registry.features.is_feature_enabled("override_feature") is False
 
 
 def test_load_extensions_from_yaml_manifest(tmp_path):
     manifest = tmp_path / "extension.yaml"
     manifest.write_text(
         """
-product:
-  name: MyProduct
-  version: 2.0.0
-  module_alias: my_product
-  cli_name: myproduct
-  working_dir: ~/.myproduct
-  secret_dir: ~/.myproduct.secret
-  console_static_dir: /opt/myproduct/console
-  agent_prompt_files:
-    - MY_PRODUCT.md
-    - AGENTS.md
 features:
   disabled_features:
     - builtin_qa_agent
@@ -177,10 +146,6 @@ features:
         include_entry_points=False,
     )
 
-    assert registry.product.product_name == "MyProduct"
-    assert registry.product.module_alias == "my_product"
-    assert registry.product.cli_name == "myproduct"
-    assert registry.product.agent_prompt_files == ("MY_PRODUCT.md", "AGENTS.md")
     assert registry.features.is_feature_enabled("builtin_qa_agent") is False
     assert registry.features.is_channel_enabled("wechat") is False
 
@@ -192,11 +157,9 @@ def test_load_extensions_discovers_project_manifest(tmp_path, monkeypatch):
     manifest = project / "manifest.yaml"
     manifest.write_text(
         """
-product:
-  name: MyProduct
-  cli_name: myproduct
-  working_dir: ./.runtime
-  console_static_dir: ./console
+features:
+  disabled_features:
+    - builtin_qa_agent
 """.strip(),
         encoding="utf-8",
     )
@@ -205,9 +168,7 @@ product:
 
     load_extensions(registry=registry, include_entry_points=False)
 
-    assert registry.product.product_name == "MyProduct"
-    assert registry.product.working_dir == project / ".runtime"
-    assert registry.product.console_static_dir == project / "console"
+    assert registry.features.is_feature_enabled("builtin_qa_agent") is False
 
 
 def test_discover_extension_manifest_ignores_unrelated_manifest(tmp_path):
@@ -218,6 +179,20 @@ def test_discover_extension_manifest_ignores_unrelated_manifest(tmp_path):
 services:
   web:
     image: example
+""".strip(),
+        encoding="utf-8",
+    )
+
+    assert discover_extension_manifest([project]) is None
+
+
+def test_discover_extension_manifest_ignores_product_only_manifest(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "manifest.yaml").write_text(
+        """
+product:
+  name: MyProduct
 """.strip(),
         encoding="utf-8",
     )
@@ -236,8 +211,9 @@ def test_discover_extension_manifest_checks_executable_path(
     outside.mkdir()
     (project / "manifest.yaml").write_text(
         """
-product:
-  name: MyProduct
+features:
+  disabled_features:
+    - builtin_qa_agent
 """.strip(),
         encoding="utf-8",
     )
@@ -254,8 +230,9 @@ def test_load_extensions_config_path_uses_qwenpaw_env(tmp_path, monkeypatch):
     qwenpaw_manifest = tmp_path / "qwenpaw.yaml"
     qwenpaw_manifest.write_text(
         """
-product:
-  name: QwenPawFallback
+features:
+  disabled_features:
+    - builtin_qa_agent
 """.strip(),
         encoding="utf-8",
     )
@@ -264,15 +241,16 @@ product:
 
     load_extensions(registry=registry, include_entry_points=False)
 
-    assert registry.product.product_name == "QwenPawFallback"
+    assert registry.features.is_feature_enabled("builtin_qa_agent") is False
 
 
 def test_load_extensions_ignores_business_prefixed_config(tmp_path, monkeypatch):
     manifest = tmp_path / "extension.yaml"
     manifest.write_text(
         """
-product:
-  name: MyProduct
+features:
+  disabled_features:
+    - builtin_qa_agent
 """.strip(),
         encoding="utf-8",
     )
@@ -281,7 +259,7 @@ product:
 
     load_extensions(registry=registry, include_entry_points=False)
 
-    assert registry.product.product_name == "QwenPaw"
+    assert registry.features.is_feature_enabled("builtin_qa_agent") is True
 
 
 def test_load_extensions_is_idempotent(monkeypatch):

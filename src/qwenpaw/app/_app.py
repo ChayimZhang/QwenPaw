@@ -27,7 +27,6 @@ from ..constant import (
     CORS_ORIGINS,
     WORKING_DIR,
     PROJECT_NAME,
-    PROJECT_VERSION,
 )
 from ..__version__ import __version__
 from ..backup._utils.safe_swap import cleanup_startup_restore_artifacts
@@ -53,7 +52,6 @@ from .migration import (
     ensure_qa_agent_exists,
 )
 from .channels.registry import register_custom_channel_routes
-from ..utils.console_static import resolve_console_static_dir
 
 # Apply log level on load so reload child process gets same level as CLI.
 logger = setup_logger(os.environ.get(LOG_LEVEL_ENV, "info"))
@@ -210,7 +208,7 @@ class DynamicMultiAgentRunner:
 runner = DynamicMultiAgentRunner()
 
 agent_app = AgentApp(
-    app_name=PROJECT_NAME,
+    app_name="QwenPaw",
     app_description="A helpful assistant with background task support",
     runner=runner,
     enable_stream_task=True,
@@ -299,6 +297,7 @@ async def lifespan(  # pylint: disable=too-many-statements,too-many-branches
         return await multi_agent_manager.get_agent(agent_id)
 
     app.state.get_agent_by_id = _get_agent_by_id
+
     fast_elapsed = time.time() - startup_start_time
     logger.info(
         f"Server ready in {fast_elapsed:.3f}s "
@@ -577,7 +576,43 @@ if CORS_ORIGINS:
         expose_headers=["Content-Disposition"],
     )
 
-_CONSOLE_STATIC_DIR = resolve_console_static_dir()
+
+_CONSOLE_STATIC_ENV = "QWENPAW_CONSOLE_STATIC_DIR"
+
+
+def _resolve_console_static_dir() -> str:
+    from ..constant import EnvVarLoader
+
+    static_dir = EnvVarLoader.get_str(_CONSOLE_STATIC_ENV)
+    if static_dir:
+        return static_dir
+    # Shipped dist lives in the package as static data
+    pkg_dir = Path(__file__).resolve().parent.parent
+    candidate = pkg_dir / "console"
+    if candidate.is_dir() and (candidate / "index.html").exists():
+        return str(candidate)
+
+    # Fallback to repo data
+    repo_dir = pkg_dir.parent.parent
+    candidate = repo_dir / "console" / "dist"
+    if candidate.is_dir() and (candidate / "index.html").exists():
+        return str(candidate)
+
+    # Fallback to cwd data
+    cwd = Path(os.getcwd())
+    for subdir in ("console/dist", "console_dist"):
+        candidate = cwd / subdir
+        if candidate.is_dir() and (candidate / "index.html").exists():
+            return str(candidate)
+
+    fallback = cwd / "console" / "dist"
+    logger.warning(
+        f"Console static directory not found. Falling back to '{fallback}'.",
+    )
+    return str(fallback)
+
+
+_CONSOLE_STATIC_DIR = _resolve_console_static_dir()
 _CONSOLE_INDEX = (
     Path(_CONSOLE_STATIC_DIR) / "index.html" if _CONSOLE_STATIC_DIR else None
 )
@@ -604,8 +639,6 @@ def get_version():
     """Return the current application version (public-safe payload)."""
     return {
         "version": __version__,
-        "product": PROJECT_NAME,
-        "product_version": PROJECT_VERSION,
     }
 
 

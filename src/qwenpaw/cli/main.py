@@ -40,16 +40,6 @@ from ..config.utils import read_last_api  # noqa: E402
 _record("..config.utils", time.perf_counter() - _t)
 
 _t = time.perf_counter()
-from ..extensions import (  # noqa: E402
-    get_extension_registry,
-    load_extensions,
-)
-
-load_extensions()
-_EXTENSION_REGISTRY = get_extension_registry()
-_record("..extensions", time.perf_counter() - _t)
-
-_t = time.perf_counter()
 from ..__version__ import __version__  # noqa: E402
 
 _record("..__version__", time.perf_counter() - _t)
@@ -102,67 +92,60 @@ class LazyGroup(click.Group):
         return None
 
 
-_DEFAULT_LAZY_SUBCOMMANDS = {
-    "acp": ("qwenpaw.cli.acp_cmd", "acp_cmd", ".acp_cmd"),
-    "app": ("qwenpaw.cli.app_cmd", "app_cmd", ".app_cmd"),
-    "channels": (
-        "qwenpaw.cli.channels_cmd",
-        "channels_group",
-        ".channels_cmd",
-    ),
-    "channel": (
-        "qwenpaw.cli.channels_cmd",
-        "channels_group",
-        ".channels_cmd",
-    ),
-    "daemon": ("qwenpaw.cli.daemon_cmd", "daemon_group", ".daemon_cmd"),
-    "chats": ("qwenpaw.cli.chats_cmd", "chats_group", ".chats_cmd"),
-    "chat": ("qwenpaw.cli.chats_cmd", "chats_group", ".chats_cmd"),
-    "clean": ("qwenpaw.cli.clean_cmd", "clean_cmd", ".clean_cmd"),
-    "cron": ("qwenpaw.cli.cron_cmd", "cron_group", ".cron_cmd"),
-    "env": ("qwenpaw.cli.env_cmd", "env_group", ".env_cmd"),
-    "init": ("qwenpaw.cli.init_cmd", "init_cmd", ".init_cmd"),
-    "models": (
-        "qwenpaw.cli.providers_cmd",
-        "models_group",
-        ".providers_cmd",
-    ),
-    "skills": ("qwenpaw.cli.skills_cmd", "skills_group", ".skills_cmd"),
-    "uninstall": (
-        "qwenpaw.cli.uninstall_cmd",
-        "uninstall_cmd",
-        ".uninstall_cmd",
-    ),
-    "desktop": ("qwenpaw.cli.desktop_cmd", "desktop_cmd", ".desktop_cmd"),
-    "update": ("qwenpaw.cli.update_cmd", "update_cmd", ".update_cmd"),
-    "shutdown": (
-        "qwenpaw.cli.shutdown_cmd",
-        "shutdown_cmd",
-        ".shutdown_cmd",
-    ),
-    "auth": ("qwenpaw.cli.auth_cmd", "auth_group", ".auth_cmd"),
-    "agents": ("qwenpaw.cli.agents_cmd", "agents_group", ".agents_cmd"),
-    "agent": ("qwenpaw.cli.agents_cmd", "agents_group", ".agents_cmd"),
-    "plugin": (
-        "qwenpaw.cli.plugin_commands",
-        "plugin",
-        ".plugin_commands",
-    ),
-    "task": ("qwenpaw.cli.task_cmd", "task_cmd", ".task_cmd"),
-    "doctor": ("qwenpaw.cli.doctor_cmd", "doctor_cmd", ".doctor_cmd"),
-}
-
-
 @click.group(
     cls=LazyGroup,
-    name=_EXTENSION_REGISTRY.product.cli_name,
     context_settings={"help_option_names": ["-h", "--help"]},
-    lazy_subcommands=_DEFAULT_LAZY_SUBCOMMANDS,
+    lazy_subcommands={
+        "acp": ("qwenpaw.cli.acp_cmd", "acp_cmd", ".acp_cmd"),
+        "app": ("qwenpaw.cli.app_cmd", "app_cmd", ".app_cmd"),
+        "channels": (
+            "qwenpaw.cli.channels_cmd",
+            "channels_group",
+            ".channels_cmd",
+        ),
+        "channel": (
+            "qwenpaw.cli.channels_cmd",
+            "channels_group",
+            ".channels_cmd",
+        ),
+        "daemon": ("qwenpaw.cli.daemon_cmd", "daemon_group", ".daemon_cmd"),
+        "chats": ("qwenpaw.cli.chats_cmd", "chats_group", ".chats_cmd"),
+        "chat": ("qwenpaw.cli.chats_cmd", "chats_group", ".chats_cmd"),
+        "clean": ("qwenpaw.cli.clean_cmd", "clean_cmd", ".clean_cmd"),
+        "cron": ("qwenpaw.cli.cron_cmd", "cron_group", ".cron_cmd"),
+        "env": ("qwenpaw.cli.env_cmd", "env_group", ".env_cmd"),
+        "init": ("qwenpaw.cli.init_cmd", "init_cmd", ".init_cmd"),
+        "models": (
+            "qwenpaw.cli.providers_cmd",
+            "models_group",
+            ".providers_cmd",
+        ),
+        "skills": ("qwenpaw.cli.skills_cmd", "skills_group", ".skills_cmd"),
+        "uninstall": (
+            "qwenpaw.cli.uninstall_cmd",
+            "uninstall_cmd",
+            ".uninstall_cmd",
+        ),
+        "desktop": ("qwenpaw.cli.desktop_cmd", "desktop_cmd", ".desktop_cmd"),
+        "update": ("qwenpaw.cli.update_cmd", "update_cmd", ".update_cmd"),
+        "shutdown": (
+            "qwenpaw.cli.shutdown_cmd",
+            "shutdown_cmd",
+            ".shutdown_cmd",
+        ),
+        "auth": ("qwenpaw.cli.auth_cmd", "auth_group", ".auth_cmd"),
+        "agents": ("qwenpaw.cli.agents_cmd", "agents_group", ".agents_cmd"),
+        "agent": ("qwenpaw.cli.agents_cmd", "agents_group", ".agents_cmd"),
+        "plugin": (
+            "qwenpaw.cli.plugin_commands",
+            "plugin",
+            ".plugin_commands",
+        ),
+        "task": ("qwenpaw.cli.task_cmd", "task_cmd", ".task_cmd"),
+        "doctor": ("qwenpaw.cli.doctor_cmd", "doctor_cmd", ".doctor_cmd"),
+    },
 )
-@click.version_option(
-    version=_EXTENSION_REGISTRY.product.product_version or __version__,
-    prog_name=_EXTENSION_REGISTRY.product.product_name,
-)
+@click.version_option(version=__version__, prog_name="QwenPaw")
 @click.option("--host", default=None, help="API Host")
 @click.option(
     "--port",
