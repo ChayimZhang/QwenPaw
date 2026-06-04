@@ -45,6 +45,8 @@ from ..envs import load_envs_into_environ
 from ..providers.provider_manager import ProviderManager
 from ..local_models.manager import LocalModelManager
 from .multi_agent_manager import MultiAgentManager
+from ..clawmgt.service import ClawMgtEdgeService
+from ..config.utils import save_config
 from .migration import (
     migrate_legacy_workspace_to_default_agent,
     migrate_legacy_skills_to_skill_pool,
@@ -285,6 +287,7 @@ async def lifespan(  # pylint: disable=too-many-statements,too-many-branches
     app.state.local_model_manager = local_model_manager
     app.state.plugin_loader = None
     app.state.plugin_registry = None
+    app.state.clawmgt_edge_service = None
 
     if isinstance(runner, DynamicMultiAgentRunner):
         runner.set_multi_agent_manager(multi_agent_manager)
@@ -369,6 +372,23 @@ async def lifespan(  # pylint: disable=too-many-statements,too-many-branches
 
             app.state.plugin_loader = plugin_loader
             app.state.plugin_registry = plugin_loader.registry
+
+            # ---- ClawMgt Edge Integration ----
+            config = load_config(get_config_path())
+            if config.clawmgt.enabled:
+                try:
+                    logger.info("Starting ClawMgt edge service...")
+                    previous_node_id = config.clawmgt.node_id
+                    edge_service = ClawMgtEdgeService(config.clawmgt)
+                    await edge_service.start()
+                    app.state.clawmgt_edge_service = edge_service
+                    if config.clawmgt.node_id != previous_node_id:
+                        save_config(config, get_config_path())
+                except Exception:
+                    logger.error(
+                        "Failed to start ClawMgt edge service",
+                        exc_info=True,
+                    )
 
             # ---- Plugin Control Commands ----
             logger.debug("Registering plugin control commands...")
@@ -516,6 +536,14 @@ async def lifespan(  # pylint: disable=too-many-statements,too-many-branches
                 )
                 with suppress(OSError, RuntimeError, ValueError):
                     local_model_mgr.shutdown_server_sync()
+
+        edge_service = getattr(app.state, "clawmgt_edge_service", None)
+        if edge_service is not None:
+            logger.info("Stopping ClawMgt edge service...")
+            try:
+                await edge_service.stop()
+            except Exception as e:
+                logger.error(f"Error stopping ClawMgt edge service: {e}")
 
         # Stop multi-agent manager (stops all agents and their components)
         multi_agent_mgr = getattr(app.state, "multi_agent_manager", None)

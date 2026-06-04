@@ -32,6 +32,7 @@ from ..constant import (
     LLM_RATE_LIMIT_PAUSE,
     WORKING_DIR,
 )
+from ..clawmgt.config import ClawMgtSettings
 
 
 # ============================================================================
@@ -1738,6 +1739,7 @@ class Config(BaseModel):
     """Root config (config.json)."""
 
     channels: ChannelConfig = ChannelConfig()
+    clawmgt: ClawMgtSettings = Field(default_factory=ClawMgtSettings)
     mcp: MCPConfig = MCPConfig()
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
     last_api: LastApiConfig = LastApiConfig()
