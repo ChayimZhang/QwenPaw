@@ -17,7 +17,7 @@ from .handlers import (
     SkillUpgradeHandler,
 )
 from .models import TaskExecutionContext
-from .reporter import SkillMetadataReporter
+from .reporter import DataReporter, ReportScheduler, SkillMetadataReporter
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,8 @@ class ClawMgtEdgeService:
         settings: ClawMgtSettings,
         client: ClawMgtClient | None = None,
         engine: TaskEngine | None = None,
-        reporter: SkillMetadataReporter | None = None,
+        reporter: DataReporter | None = None,
+        reporters: list[DataReporter] | None = None,
         context: TaskExecutionContext | None = None,
     ) -> None:
         self.settings = settings
@@ -47,7 +48,16 @@ class ClawMgtEdgeService:
             context=context,
             pull_limit=settings.pull_limit,
         )
-        self.reporter = reporter or SkillMetadataReporter(self.client)
+        registered_reporters = list(reporters or [])
+        if reporter is not None:
+            registered_reporters.append(reporter)
+        if not registered_reporters:
+            registered_reporters.append(SkillMetadataReporter(self.client))
+        self.reporters = registered_reporters
+        self.report_scheduler = ReportScheduler(
+            settings=settings,
+            reporters=self.reporters,
+        )
         self._tasks: list[asyncio.Task] = []
         self._stop_event = asyncio.Event()
 
@@ -56,10 +66,10 @@ class ClawMgtEdgeService:
             return
         if self.settings.node_id is None and self.settings.auto_register:
             self.settings.node_id = await self.client.register_node()
-        await self.reporter.report_once()
+        await self.report_scheduler.report_all_once()
         self._tasks = [
             asyncio.create_task(self._heartbeat_loop()),
-            asyncio.create_task(self._report_loop()),
+            *self.report_scheduler.start(self._stop_event),
             asyncio.create_task(self._task_loop()),
         ]
 
@@ -77,21 +87,6 @@ class ClawMgtEdgeService:
             self.settings.heartbeat_interval_sec,
             self.client.heartbeat,
             "heartbeat",
-        )
-
-    async def _report_loop(self) -> None:
-        try:
-            await asyncio.wait_for(
-                self._stop_event.wait(),
-                timeout=self.settings.report_interval_sec,
-            )
-            return
-        except asyncio.TimeoutError:
-            pass
-        await self._run_interval(
-            self.settings.report_interval_sec,
-            self.reporter.report_once,
-            "skill metadata report",
         )
 
     async def _task_loop(self) -> None:

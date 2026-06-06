@@ -51,14 +51,24 @@ class ClawMgtClient:
         self,
         skills: list[dict[str, Any]],
     ) -> dict[str, Any]:
+        return await self.report_data(
+            "skill_metadata",
+            {
+                "skills": skills,
+            },
+        )
+
+    async def report_data(
+        self,
+        report_type: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
         self._require_node()
         response = await self._client.post(
             self._url(f"/api/claw/nodes/{self.settings.node_id}/reports"),
             json={
-                "type": "skill_metadata",
-                "payload": {
-                    "skills": skills,
-                },
+                "type": report_type,
+                "payload": payload,
             },
         )
         return dict(self._data(response))

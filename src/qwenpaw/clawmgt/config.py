@@ -24,6 +24,7 @@ class ClawMgtSettings(BaseModel):
     auto_register: bool = True
     heartbeat_interval_sec: int = Field(default=30, ge=5, le=3600)
     report_interval_sec: int = Field(default=300, ge=30, le=86400)
+    report_intervals_sec: dict[str, int] = Field(default_factory=dict)
     task_poll_interval_sec: int = Field(default=5, ge=1, le=3600)
     pull_limit: int = Field(default=10, ge=1, le=100)
     request_timeout_sec: float = Field(default=15.0, gt=0, le=120)
@@ -37,6 +38,30 @@ class ClawMgtSettings(BaseModel):
     @classmethod
     def _trim_text(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("report_intervals_sec")
+    @classmethod
+    def _validate_report_intervals(
+        cls,
+        value: dict[str, int],
+    ) -> dict[str, int]:
+        intervals: dict[str, int] = {}
+        for report_type, interval in value.items():
+            normalized_type = str(report_type).strip()
+            if not normalized_type:
+                raise ValueError("Report type must not be blank")
+            if interval < 30 or interval > 86400:
+                raise ValueError(
+                    "Report interval must be between 30 and 86400 seconds",
+                )
+            intervals[normalized_type] = interval
+        return intervals
+
+    def report_interval_for(self, report_type: str) -> int:
+        return self.report_intervals_sec.get(
+            report_type,
+            self.report_interval_sec,
+        )
 
     def resolved_node_key(self) -> str:
         if self.node_key:

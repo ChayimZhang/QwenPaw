@@ -9,12 +9,16 @@ if TYPE_CHECKING:
     from .client import ClawMgtClient
     from .config import ClawMgtSettings
     from .engine import TaskEngine
+    from .reporter import DataReporter, ReportScheduler, SkillMetadataReporter
     from .service import ClawMgtEdgeService
 
 __all__ = [
     "ClawMgtClient",
     "ClawMgtEdgeService",
     "ClawMgtSettings",
+    "DataReporter",
+    "ReportScheduler",
+    "SkillMetadataReporter",
     "TaskEngine",
 ]
 
@@ -32,6 +36,18 @@ def __getattr__(name: str) -> Any:
         from .config import ClawMgtSettings
 
         return ClawMgtSettings
+    if name == "DataReporter":
+        from .reporter import DataReporter
+
+        return DataReporter
+    if name == "ReportScheduler":
+        from .reporter import ReportScheduler
+
+        return ReportScheduler
+    if name == "SkillMetadataReporter":
+        from .reporter import SkillMetadataReporter
+
+        return SkillMetadataReporter
     if name == "TaskEngine":
         from .engine import TaskEngine
 
