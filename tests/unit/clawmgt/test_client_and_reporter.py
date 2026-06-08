@@ -5,7 +5,7 @@ import pytest
 
 from qwenpaw.clawmgt.client import ClawMgtClient
 from qwenpaw.clawmgt.config import ClawMgtSettings
-from qwenpaw.clawmgt.reporter import ReportScheduler, SkillMetadataReporter
+from qwenpaw.clawmgt.reporter import SkillMetadataReporter
 
 
 class _FakeAsyncClient:
@@ -133,29 +133,3 @@ async def test_reporter_collects_pool_skill_metadata():
         {"skillName": "docx", "version": "0.0.0"},
     ]
     assert http.calls[0][2]["json"]["type"] == "skill_metadata"
-
-
-@pytest.mark.asyncio
-async def test_report_scheduler_reports_registered_reporters_and_resolves_intervals():
-    class FakeReporter:
-        def __init__(self, report_type):
-            self.report_type = report_type
-            self.calls = 0
-
-        async def report_once(self):
-            self.calls += 1
-
-    skill = FakeReporter("skill_metadata")
-    runtime = FakeReporter("runtime_metadata")
-    settings = ClawMgtSettings(
-        report_interval_sec=300,
-        report_intervals_sec={"runtime_metadata": 60},
-    )
-    scheduler = ReportScheduler(settings=settings, reporters=[skill, runtime])
-
-    await scheduler.report_all_once()
-
-    assert skill.calls == 1
-    assert runtime.calls == 1
-    assert scheduler.interval_for(skill) == 300
-    assert scheduler.interval_for(runtime) == 60
