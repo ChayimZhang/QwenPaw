@@ -34,6 +34,50 @@ def test_upsert_and_delete_pool_skill_config(monkeypatch):
     assert "config" not in manifest["skills"]["browser"]
 
 
+def test_get_pool_skill_config(monkeypatch):
+    monkeypatch.setattr(
+        configuration,
+        "read_skill_pool_manifest",
+        lambda: {
+            "skills": {
+                "browser": {"config": {"timeout": 30}},
+                "empty": {},
+            },
+        },
+    )
+
+    assert configuration.get_pool_skill_config("browser") == {"timeout": 30}
+    assert configuration.get_pool_skill_config("empty") == {}
+
+
+def test_get_workspace_skill_config(monkeypatch):
+    monkeypatch.setattr(
+        configuration,
+        "read_skill_manifest",
+        lambda workspace_dir: {
+            "skills": {
+                "browser": {"config": {"mode": "fast"}},
+            },
+        },
+    )
+
+    assert configuration.get_workspace_skill_config(
+        "D:/tmp/workspace",
+        "browser",
+    ) == {"mode": "fast"}
+
+
+def test_get_skill_config_raises_when_missing(monkeypatch):
+    monkeypatch.setattr(
+        configuration,
+        "read_skill_pool_manifest",
+        lambda: {"skills": {}},
+    )
+
+    with pytest.raises(ValueError, match="Pool skill not found"):
+        configuration.get_pool_skill_config("missing")
+
+
 def test_workspace_skill_config_raises_when_missing(monkeypatch):
     monkeypatch.setattr(
         configuration,
@@ -66,6 +110,20 @@ def test_qwenpaw_env_update_upserts_and_deletes(monkeypatch):
 
     assert envs == {"OLD": "1", "NEW": "2", "EMPTY": ""}
     assert saved == [envs]
+
+
+def test_qwenpaw_env_read_helpers(monkeypatch):
+    monkeypatch.setattr(
+        configuration,
+        "load_envs",
+        lambda: {"OPENAI_API_KEY": "sk-test"},
+    )
+
+    assert configuration.get_qwenpaw_env_vars() == {
+        "OPENAI_API_KEY": "sk-test",
+    }
+    assert configuration.get_qwenpaw_env_var("OPENAI_API_KEY") == "sk-test"
+    assert configuration.get_qwenpaw_env_var("MISSING") is None
 
 
 def test_qwenpaw_env_helpers_validate_empty_changes():

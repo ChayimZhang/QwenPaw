@@ -12,8 +12,15 @@ from qwenpaw.agents.skill_system.store import (
     get_pool_skill_manifest_path,
     get_workspace_skill_manifest_path,
     mutate_json,
+    read_skill_manifest,
+    read_skill_pool_manifest,
 )
 from qwenpaw.envs import load_envs, save_envs
+
+
+def get_pool_skill_config(skill_name: str) -> dict[str, Any]:
+    manifest = read_skill_pool_manifest()
+    return _read_skill_config(manifest, skill_name, "Pool skill")
 
 
 def upsert_pool_skill_config(
@@ -39,6 +46,14 @@ def delete_pool_skill_config(skill_name: str) -> dict[str, Any]:
         delete=True,
         label="Pool skill",
     )
+
+
+def get_workspace_skill_config(
+    workspace_dir: str | Path,
+    skill_name: str,
+) -> dict[str, Any]:
+    manifest = read_skill_manifest(Path(workspace_dir))
+    return _read_skill_config(manifest, skill_name, "Workspace skill")
 
 
 def upsert_workspace_skill_config(
@@ -68,6 +83,14 @@ def delete_workspace_skill_config(
         delete=True,
         label="Workspace skill",
     )
+
+
+def get_qwenpaw_env_vars() -> dict[str, str]:
+    return dict(load_envs())
+
+
+def get_qwenpaw_env_var(key: str) -> str | None:
+    return load_envs().get(_require_text(key, "env key"))
 
 
 def upsert_qwenpaw_env_vars(
@@ -109,6 +132,18 @@ def apply_qwenpaw_env_update(
         envs.pop(key, None)
     save_envs(envs)
     return envs
+
+
+def _read_skill_config(
+    manifest: dict[str, Any],
+    skill_name: str,
+    label: str,
+) -> dict[str, Any]:
+    normalized_name = _require_text(skill_name, "skillName")
+    entry = manifest.get("skills", {}).get(normalized_name)
+    if entry is None:
+        raise ValueError(f"{label} not found: {normalized_name}")
+    return dict(entry.get("config") or {})
 
 
 def _mutate_skill_config(
@@ -171,4 +206,3 @@ def _require_env_value(value: str) -> str:
     if value is None:
         raise ValueError("env value cannot be null")
     return str(value)
-

@@ -13,6 +13,10 @@ if TYPE_CHECKING:
         delete_pool_skill_config,
         delete_qwenpaw_env_vars,
         delete_workspace_skill_config,
+        get_pool_skill_config,
+        get_qwenpaw_env_var,
+        get_qwenpaw_env_vars,
+        get_workspace_skill_config,
         upsert_pool_skill_config,
         upsert_qwenpaw_env_vars,
         upsert_workspace_skill_config,
@@ -33,6 +37,10 @@ __all__ = [
     "delete_pool_skill_config",
     "delete_qwenpaw_env_vars",
     "delete_workspace_skill_config",
+    "get_pool_skill_config",
+    "get_qwenpaw_env_var",
+    "get_qwenpaw_env_vars",
+    "get_workspace_skill_config",
     "upsert_pool_skill_config",
     "upsert_qwenpaw_env_vars",
     "upsert_workspace_skill_config",
@@ -68,6 +76,22 @@ def __getattr__(name: str) -> Any:
         from .configuration import delete_workspace_skill_config
 
         return delete_workspace_skill_config
+    if name == "get_pool_skill_config":
+        from .configuration import get_pool_skill_config
+
+        return get_pool_skill_config
+    if name == "get_qwenpaw_env_var":
+        from .configuration import get_qwenpaw_env_var
+
+        return get_qwenpaw_env_var
+    if name == "get_qwenpaw_env_vars":
+        from .configuration import get_qwenpaw_env_vars
+
+        return get_qwenpaw_env_vars
+    if name == "get_workspace_skill_config":
+        from .configuration import get_workspace_skill_config
+
+        return get_workspace_skill_config
     if name == "JobExecutionManager":
         from .managers import JobExecutionManager
 
