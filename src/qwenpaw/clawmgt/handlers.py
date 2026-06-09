@@ -6,17 +6,16 @@ from __future__ import annotations
 import asyncio
 import json
 from abc import ABC, abstractmethod
-from pathlib import Path
 from typing import Any
 
 from qwenpaw.agents.skill_system import SkillPoolService
 from qwenpaw.agents.skill_system.hub import import_pool_skill_from_hub
-from qwenpaw.agents.skill_system.store import (
-    default_pool_manifest,
-    default_workspace_manifest,
-    get_pool_skill_manifest_path,
-    get_workspace_skill_manifest_path,
-    mutate_json,
+from .configuration import (
+    apply_qwenpaw_env_update,
+    delete_pool_skill_config,
+    delete_workspace_skill_config,
+    upsert_pool_skill_config,
+    upsert_workspace_skill_config,
 )
 
 from .models import (
@@ -73,7 +72,7 @@ class SkillInstallHandler(TaskHandler):
                     target_name=skill_name,
                 )
                 if parameters:
-                    _set_pool_skill_config(result.name, parameters)
+                    upsert_pool_skill_config(result.name, parameters)
                 details.append(
                     {
                         "skillName": skill_name,
@@ -162,26 +161,75 @@ class ParamUpdateHandler(TaskHandler):
         payload = self.payload(item)
         skill_name = str(payload.get("skillName") or "").strip()
         parameters = dict(payload.get("parameters") or {})
-        if context.workspace_dir:
-            _set_workspace_skill_config(
+        delete = bool(payload.get("delete") or payload.get("deleted"))
+        if context.workspace_dir and delete:
+            result = delete_workspace_skill_config(context.workspace_dir, skill_name)
+        elif context.workspace_dir:
+            result = upsert_workspace_skill_config(
                 context.workspace_dir,
                 skill_name,
                 parameters,
             )
+        elif delete:
+            result = delete_pool_skill_config(skill_name)
         else:
-            _set_pool_skill_config(skill_name, parameters)
+            result = upsert_pool_skill_config(skill_name, parameters)
         return TaskExecutionResult.succeeded(
             result={
                 "skillName": skill_name,
                 "parameters": parameters,
+                "deleted": delete,
             },
             details=[
                 {
                     "skillName": skill_name,
                     "status": "SUCCEEDED",
-                    "parameters": parameters,
+                    "parameters": result["config"],
+                    "deleted": delete,
                 },
             ],
+        )
+
+
+class EnvUpdateHandler(TaskHandler):
+    task_type = "ENV_UPDATE"
+
+    async def execute(
+        self,
+        item: ClawTaskItem,
+        context: TaskExecutionContext,
+    ) -> TaskExecutionResult:
+        _ = context
+        payload = self.payload(item)
+        variables = {
+            str(key): str(value)
+            for key, value in dict(payload.get("variables") or {}).items()
+        }
+        delete_keys = [str(key) for key in payload.get("deleteKeys") or []]
+        envs = apply_qwenpaw_env_update(variables, delete_keys)
+        details = [
+            {
+                "key": key,
+                "operation": "UPSERT",
+                "status": "SUCCEEDED",
+            }
+            for key in sorted(variables)
+        ]
+        details.extend(
+            {
+                "key": key,
+                "operation": "DELETE",
+                "status": "SUCCEEDED",
+            }
+            for key in sorted(delete_keys)
+        )
+        return TaskExecutionResult.succeeded(
+            result={
+                "updatedKeys": sorted(variables),
+                "deletedKeys": sorted(delete_keys),
+                "envCount": len(envs),
+            },
+            details=details,
         )
 
 
@@ -202,41 +250,3 @@ def _details_result(details: list[dict[str, Any]]) -> TaskExecutionResult:
         details=details,
         error_message="Some task details failed",
     )
-
-
-def _set_pool_skill_config(skill_name: str, parameters: dict[str, Any]) -> None:
-    def _update(payload: dict[str, Any]) -> bool:
-        entry = payload.get("skills", {}).get(skill_name)
-        if entry is None:
-            return False
-        entry["config"] = parameters
-        return True
-
-    updated = mutate_json(
-        get_pool_skill_manifest_path(),
-        default_pool_manifest(),
-        _update,
-    )
-    if not updated:
-        raise ValueError(f"Pool skill not found: {skill_name}")
-
-
-def _set_workspace_skill_config(
-    workspace_dir: str,
-    skill_name: str,
-    parameters: dict[str, Any],
-) -> None:
-    def _update(payload: dict[str, Any]) -> bool:
-        entry = payload.get("skills", {}).get(skill_name)
-        if entry is None:
-            return False
-        entry["config"] = parameters
-        return True
-
-    updated = mutate_json(
-        get_workspace_skill_manifest_path(Path(workspace_dir)),
-        default_workspace_manifest(),
-        _update,
-    )
-    if not updated:
-        raise ValueError(f"Workspace skill not found: {skill_name}")

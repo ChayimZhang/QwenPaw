@@ -12,6 +12,7 @@ from .client import ClawMgtClient
 from .config import ClawMgtSettings
 from .engine import TaskEngine
 from .handlers import (
+    EnvUpdateHandler,
     ParamUpdateHandler,
     SkillInstallHandler,
     SkillRemoveHandler,
@@ -22,6 +23,17 @@ from .reporter import DataReporter
 from .reporter import SkillMetadataReporter
 
 logger = logging.getLogger(__name__)
+
+
+async def _should_stop_after_wait(
+    stop_event: asyncio.Event,
+    timeout: int,
+) -> bool:
+    try:
+        await asyncio.wait_for(stop_event.wait(), timeout=timeout)
+    except asyncio.TimeoutError:
+        return False
+    return True
 
 
 class ReporterManager:
@@ -82,11 +94,8 @@ class ReporterManager:
     ) -> None:
         interval = self.interval_for(reporter)
         while not stop_event.is_set():
-            try:
-                await asyncio.wait_for(stop_event.wait(), timeout=interval)
+            if await _should_stop_after_wait(stop_event, interval):
                 return
-            except asyncio.TimeoutError:
-                pass
             try:
                 await reporter.report_once()
             except asyncio.CancelledError:
@@ -115,6 +124,7 @@ class JobExecutionManager:
             SkillUpgradeHandler(),
             SkillRemoveHandler(),
             ParamUpdateHandler(),
+            EnvUpdateHandler(),
         ]
         self.engine = engine or TaskEngine(
             client=self.client,
@@ -156,14 +166,11 @@ class JobExecutionManager:
 
     async def _heartbeat_loop(self) -> None:
         while not self._stop_event.is_set():
-            try:
-                await asyncio.wait_for(
-                    self._stop_event.wait(),
-                    timeout=self.settings.heartbeat_interval_sec,
-                )
+            if await _should_stop_after_wait(
+                self._stop_event,
+                self.settings.heartbeat_interval_sec,
+            ):
                 return
-            except asyncio.TimeoutError:
-                pass
             try:
                 await self.client.heartbeat()
             except asyncio.CancelledError:
@@ -173,14 +180,11 @@ class JobExecutionManager:
 
     async def _task_loop(self, stop_event: asyncio.Event) -> None:
         while not stop_event.is_set():
-            try:
-                await asyncio.wait_for(
-                    stop_event.wait(),
-                    timeout=self.settings.task_poll_interval_sec,
-                )
+            if await _should_stop_after_wait(
+                stop_event,
+                self.settings.task_poll_interval_sec,
+            ):
                 return
-            except asyncio.TimeoutError:
-                pass
             try:
                 await self.run_once()
             except asyncio.CancelledError:

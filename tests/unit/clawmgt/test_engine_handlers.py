@@ -5,6 +5,7 @@ import pytest
 
 from qwenpaw.clawmgt.engine import TaskEngine
 from qwenpaw.clawmgt.handlers import (
+    EnvUpdateHandler,
     ParamUpdateHandler,
     SkillInstallHandler,
     SkillRemoveHandler,
@@ -61,8 +62,11 @@ async def test_engine_dispatches_task_items_to_registered_handler(monkeypatch):
     )
     client = _FakeClient([item])
     monkeypatch.setattr(
-        "qwenpaw.clawmgt.handlers._set_pool_skill_config",
-        lambda skill_name, parameters: None,
+        "qwenpaw.clawmgt.handlers.upsert_pool_skill_config",
+        lambda skill_name, parameters: {
+            "skillName": skill_name,
+            "config": parameters,
+        },
     )
     handler = ParamUpdateHandler(pool_service=_FakePool())
     engine = TaskEngine(client=client, handlers=[handler])
@@ -102,8 +106,11 @@ async def test_skill_install_handler_imports_each_skill(monkeypatch):
         fake_import_pool_skill_from_hub,
     )
     monkeypatch.setattr(
-        "qwenpaw.clawmgt.handlers._set_pool_skill_config",
-        lambda skill_name, parameters: None,
+        "qwenpaw.clawmgt.handlers.upsert_pool_skill_config",
+        lambda skill_name, parameters: {
+            "skillName": skill_name,
+            "config": parameters,
+        },
     )
     handler = SkillInstallHandler()
     item = ClawTaskItem(
@@ -152,3 +159,59 @@ async def test_skill_remove_deletes_pool_skills():
     assert result.status is TaskExecutionStatus.PARTIAL_SUCCEEDED
     assert pool.deleted == ["browser", "missing"]
     assert result.details[1]["status"] == "FAILED"
+
+
+@pytest.mark.asyncio
+async def test_param_update_handler_can_delete_skill_config(monkeypatch):
+    deleted = []
+
+    def fake_delete(skill_name):
+        deleted.append(skill_name)
+        return {"skillName": skill_name, "config": {}, "deleted": True}
+
+    monkeypatch.setattr(
+        "qwenpaw.clawmgt.handlers.delete_pool_skill_config",
+        fake_delete,
+    )
+    handler = ParamUpdateHandler(pool_service=_FakePool())
+    item = ClawTaskItem(
+        id=401,
+        type="PARAM_UPDATE",
+        dispatch_payload='{"skillName":"browser","delete":true}',
+    )
+
+    result = await handler.execute(item, TaskExecutionContext())
+
+    assert result.status is TaskExecutionStatus.SUCCEEDED
+    assert deleted == ["browser"]
+    assert result.details[0]["deleted"] is True
+
+
+@pytest.mark.asyncio
+async def test_env_update_handler_applies_env_changes(monkeypatch):
+    calls = []
+
+    def fake_apply(variables, delete_keys):
+        calls.append((variables, delete_keys))
+        return {"OPENAI_API_KEY": "sk-test"}
+
+    monkeypatch.setattr(
+        "qwenpaw.clawmgt.handlers.apply_qwenpaw_env_update",
+        fake_apply,
+    )
+    handler = EnvUpdateHandler()
+    item = ClawTaskItem(
+        id=501,
+        type="ENV_UPDATE",
+        dispatch_payload=(
+            '{"variables":{"OPENAI_API_KEY":"sk-test"},'
+            '"deleteKeys":["TAVILY_API_KEY"]}'
+        ),
+    )
+
+    result = await handler.execute(item, TaskExecutionContext())
+
+    assert result.status is TaskExecutionStatus.SUCCEEDED
+    assert calls == [({"OPENAI_API_KEY": "sk-test"}, ["TAVILY_API_KEY"])]
+    assert result.result["updatedKeys"] == ["OPENAI_API_KEY"]
+    assert result.result["deletedKeys"] == ["TAVILY_API_KEY"]

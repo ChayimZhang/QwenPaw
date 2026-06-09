@@ -84,7 +84,6 @@ async def test_job_execution_manager_starts_registration_heartbeat_and_jobs():
     assert engine.calls == 1
     assert client.closed == 1
 
-
 @pytest.mark.asyncio
 async def test_reporter_manager_is_independent_from_job_execution_manager():
     reporter = _Reporter("skill_metadata")

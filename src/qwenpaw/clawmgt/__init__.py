@@ -8,6 +8,15 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from .client import ClawMgtClient
     from .config import ClawMgtSettings
+    from .configuration import (
+        apply_qwenpaw_env_update,
+        delete_pool_skill_config,
+        delete_qwenpaw_env_vars,
+        delete_workspace_skill_config,
+        upsert_pool_skill_config,
+        upsert_qwenpaw_env_vars,
+        upsert_workspace_skill_config,
+    )
     from .engine import TaskEngine
     from .managers import JobExecutionManager, ReporterManager
     from .reporter import DataReporter, SkillMetadataReporter
@@ -20,6 +29,13 @@ __all__ = [
     "ReporterManager",
     "SkillMetadataReporter",
     "TaskEngine",
+    "apply_qwenpaw_env_update",
+    "delete_pool_skill_config",
+    "delete_qwenpaw_env_vars",
+    "delete_workspace_skill_config",
+    "upsert_pool_skill_config",
+    "upsert_qwenpaw_env_vars",
+    "upsert_workspace_skill_config",
 ]
 
 
@@ -36,6 +52,22 @@ def __getattr__(name: str) -> Any:
         from .reporter import DataReporter
 
         return DataReporter
+    if name == "apply_qwenpaw_env_update":
+        from .configuration import apply_qwenpaw_env_update
+
+        return apply_qwenpaw_env_update
+    if name == "delete_pool_skill_config":
+        from .configuration import delete_pool_skill_config
+
+        return delete_pool_skill_config
+    if name == "delete_qwenpaw_env_vars":
+        from .configuration import delete_qwenpaw_env_vars
+
+        return delete_qwenpaw_env_vars
+    if name == "delete_workspace_skill_config":
+        from .configuration import delete_workspace_skill_config
+
+        return delete_workspace_skill_config
     if name == "JobExecutionManager":
         from .managers import JobExecutionManager
 
@@ -52,4 +84,16 @@ def __getattr__(name: str) -> Any:
         from .engine import TaskEngine
 
         return TaskEngine
+    if name == "upsert_pool_skill_config":
+        from .configuration import upsert_pool_skill_config
+
+        return upsert_pool_skill_config
+    if name == "upsert_qwenpaw_env_vars":
+        from .configuration import upsert_qwenpaw_env_vars
+
+        return upsert_qwenpaw_env_vars
+    if name == "upsert_workspace_skill_config":
+        from .configuration import upsert_workspace_skill_config
+
+        return upsert_workspace_skill_config
     raise AttributeError(name)
